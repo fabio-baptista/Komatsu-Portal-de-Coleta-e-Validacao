@@ -1,8 +1,0 @@
-{
-  "name": "Portal de Coleta e Validação de Forecast",
-  "description": "Mockup de alta fidelidade para portal corporativo de envio e validação de forecast para fornecedores e distribuidores Komatsu.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

@@ -1,6 +1,6 @@
 # UI Style Guide — Portal de Coleta e Validação de Forecast
 > Referência oficial de identidade visual para implementação Streamlit.
-> Baseada no mockup React/Vite em `app/references/mockup_ai_studio/`.
+> Referência visual antiga removida. A próxima refatoração de UI deve seguir as skills oficiais em docs/ui_skills/.
 
 ---
 

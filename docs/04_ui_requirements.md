@@ -1,6 +1,6 @@
 Preencha o arquivo docs/04_ui_requirements.md com os requisitos visuais e de interface do MVP.
 
-Use como base o mockup já criado e a identidade visual Komatsu.
+Use como base a identidade visual Komatsu. Referência visual antiga removida. A próxima refatoração de UI deve seguir as skills oficiais em docs/ui_skills/.
 
 Incluir:
 1. Paleta visual: azul marinho, amarelo, branco, cinza claro;
