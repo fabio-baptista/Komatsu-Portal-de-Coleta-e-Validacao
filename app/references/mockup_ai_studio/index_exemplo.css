@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+
+  --color-komatsu-navy: #002B5C;
+  --color-komatsu-yellow: #FFCD00;
+  --color-komatsu-gray: #F4F5F7;
+  --color-komatsu-border-navy: #001D3D;
+  --color-komatsu-text: #1A1A1A;
+  
+  --radius-card: 12px;
+}
+
+@layer base {
+  body {
+    @apply bg-komatsu-gray text-komatsu-text font-sans;
+  }
+}
+
+.komatsu-gradient {
+  background: linear-gradient(135deg, var(--color-komatsu-navy) 0%, #001D3D 100%);
+}
+
+.shadow-sm-data {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}

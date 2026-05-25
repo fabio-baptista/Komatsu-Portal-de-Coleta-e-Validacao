@@ -1,0 +1,42 @@
+# Ambientes e credenciais
+.env
+.env.*
+*.env
+.streamlit/secrets.toml
+secrets.*
+credentials.*
+*.pem
+*.key
+*.crt
+
+# Cortex local config
+.cortex/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Temporários do Excel
+~$*.xlsx
+~$*.xls
+
+# Cache/testes
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
