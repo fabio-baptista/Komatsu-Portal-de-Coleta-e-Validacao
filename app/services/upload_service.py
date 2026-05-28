@@ -586,7 +586,7 @@ def persist_upload_batch(
     uploaded_by: str,
     report_type: str = "Forecast DB",
     window_id: str | None = None,
-) -> str | None:
+) -> dict | None:
     """
     Persiste um registro de upload em CONTROL.UPLOAD_BATCHES no Snowflake.
 
@@ -596,7 +596,7 @@ def persist_upload_batch(
       - Se status=VALID: marca uploads anteriores ativos da mesma key como REPLACED
 
     Retorna:
-        upload_id (UUID) se INSERT bem-sucedido, None se falhar.
+        dict {"upload_id": str, "version": int} se INSERT bem-sucedido, None se falhar.
     """
     from services.snowflake_service import get_snowflake_session
 
@@ -695,7 +695,7 @@ def persist_upload_batch(
         valid_rows, invalid_rows,
     )
 
-    return upload_id
+    return {"upload_id": upload_id, "version": next_version}
 
 
 # ---------------------------------------------------------------------------
@@ -1095,3 +1095,176 @@ def persist_cancel_upload(
         upload_id, cancelled_by,
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Persistência em Snowflake — TRUSTED.FORECAST_VALIDATED
+# ---------------------------------------------------------------------------
+
+def persist_validated_forecast(
+    upload_id: str,
+    supplier_id: str,
+    supplier_name: str,
+    upload_version: int,
+    source_file_name: str,
+    staging_df,
+) -> int:
+    """
+    Persiste linhas normalizadas de um upload válido em TRUSTED.FORECAST_VALIDATED.
+
+    Antes de inserir, desativa (IS_ACTIVE=FALSE) linhas anteriores do mesmo
+    fornecedor para os mesmos forecast_period que estão sendo inseridos.
+
+    Parâmetros:
+        upload_id        — UUID retornado por persist_upload_batch()
+        supplier_id      — ID do fornecedor
+        supplier_name    — Nome do fornecedor
+        upload_version   — Versão do upload
+        source_file_name — Nome do arquivo original
+        staging_df       — DataFrame com colunas do esquema alvo (forecast_service)
+
+    Retorna:
+        Quantidade de linhas inseridas (0 se falhar ou DataFrame vazio).
+    """
+    import pandas as pd
+    from services.snowflake_service import get_snowflake_session
+
+    if staging_df is None or len(staging_df) == 0:
+        _upload_logger.info(
+            "persist_validated_forecast: DataFrame vazio — nada a persistir."
+        )
+        return 0
+
+    _upload_logger.info(
+        "persist_validated_forecast: início — upload_id=%s, supplier_id=%s, linhas=%d",
+        upload_id, supplier_id, len(staging_df),
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "persist_validated_forecast: sessão Snowflake indisponível."
+        )
+        return 0
+
+    # Extrair períodos únicos para desativar linhas anteriores
+    periods = staging_df["forecast_period"].dropna().unique().tolist()
+    safe_supplier = supplier_id.replace("'", "''").upper()
+
+    # Desativar linhas anteriores do mesmo fornecedor para os mesmos períodos
+    if periods:
+        period_values = ", ".join(
+            f"'{_to_date_str(str(p))}'" for p in periods
+        )
+        deactivate_sql = f"""
+            UPDATE {_DATABASE}.TRUSTED.FORECAST_VALIDATED
+            SET IS_ACTIVE = FALSE
+            WHERE SUPPLIER_ID = '{safe_supplier}'
+              AND FORECAST_PERIOD IN ({period_values})
+              AND IS_ACTIVE = TRUE
+              AND UPLOAD_ID != '{upload_id.replace("'", "''")}'
+        """
+        try:
+            session.sql(deactivate_sql).collect()
+            _upload_logger.info(
+                "persist_validated_forecast: linhas anteriores desativadas para "
+                "supplier=%s, periods=%s",
+                supplier_id, periods,
+            )
+        except Exception as exc:
+            _upload_logger.warning(
+                "persist_validated_forecast: falha ao desativar linhas anteriores: %s",
+                exc,
+            )
+            # Não bloqueia o INSERT — linhas antigas ficarão ativas até correção
+
+    # Construir VALUES multi-row
+    value_rows: list[str] = []
+    for _, row in staging_df.iterrows():
+        row_id = str(uuid.uuid4())
+        branch = str(row.get("branch", ""))[:255].replace("'", "''")
+        mat_code = str(row.get("material_code", ""))[:100].replace("'", "''")
+        mat_desc = str(row.get("material_description", "") or "")[:500].replace("'", "''")
+        forecast_period = _to_date_str(str(row.get("forecast_period", "")))
+        forecast_qty = _to_numeric(row.get("forecast_quantity", 0))
+        safe_name = supplier_name[:255].replace("'", "''")
+        safe_file = source_file_name[:500].replace("'", "''")
+        uploaded_at = str(row.get("uploaded_at", ""))
+
+        value_rows.append(
+            f"('{row_id}', '{safe_supplier}', '{safe_name}', '{branch}', "
+            f"'{mat_code}', '{mat_desc}', '{forecast_period}', {forecast_qty}, "
+            f"'{upload_id}', {upload_version}, '{uploaded_at}', '{safe_file}', TRUE)"
+        )
+
+    insert_sql = f"""
+        INSERT INTO {_DATABASE}.TRUSTED.FORECAST_VALIDATED (
+            ROW_ID, SUPPLIER_ID, SUPPLIER_NAME, BRANCH,
+            MATERIAL_CODE, MATERIAL_DESCRIPTION, FORECAST_PERIOD, FORECAST_QUANTITY,
+            UPLOAD_ID, UPLOAD_VERSION, UPLOADED_AT, SOURCE_FILE_NAME, IS_ACTIVE
+        ) VALUES
+        {', '.join(value_rows)}
+    """
+
+    try:
+        session.sql(insert_sql).collect()
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_validated_forecast: INSERT falhou.\n"
+            "  upload_id: %s\n"
+            "  linhas_tentadas: %d\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            upload_id, len(staging_df), exc, type(exc).__name__,
+        )
+        return 0
+
+    _upload_logger.info(
+        "persist_validated_forecast: sucesso — %d linhas inseridas para upload_id=%s",
+        len(staging_df), upload_id,
+    )
+    return len(staging_df)
+
+
+def _to_date_str(val: str) -> str:
+    """
+    Converte string de período para formato DATE (YYYY-MM-DD).
+    Aceita: 'YYYY-MM-DD', 'YYYY-MM', 'DD/MM/YYYY'.
+    Fallback: retorna '1900-01-01' se não conseguir parsear.
+    """
+    import pandas as pd
+    val = val.strip()
+    if not val or val == "—":
+        return "1900-01-01"
+
+    # Já no formato YYYY-MM-DD
+    if len(val) == 10 and val[4] == "-" and val[7] == "-":
+        return val
+
+    # Formato YYYY-MM → adiciona dia 01
+    if len(val) == 7 and val[4] == "-":
+        return f"{val}-01"
+
+    # Tentar parse genérico
+    try:
+        ts = pd.to_datetime(val, dayfirst=True, errors="coerce")
+        if not pd.isna(ts):
+            return ts.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    return "1900-01-01"
+
+
+def _to_numeric(val) -> str:
+    """Converte valor para string numérica segura para SQL."""
+    import math
+    if val is None:
+        return "0"
+    try:
+        n = float(val)
+        if math.isnan(n):
+            return "0"
+        return str(n)
+    except (ValueError, TypeError):
+        return "0"

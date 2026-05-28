@@ -15,7 +15,7 @@ from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
 from services.validation_service import ValidationResult, validate_forecast
 from services.forecast_service import NormalizationResult, normalize_forecast
-from services.upload_service import persist_upload_batch, persist_validation_errors
+from services.upload_service import persist_upload_batch, persist_validation_errors, persist_validated_forecast
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
 from utils.logger import get_logger
 from utils.session_state import register_upload, register_validated_forecast
@@ -544,7 +544,7 @@ def render() -> None:
 
         if not already_registered:
             # Persistir no Snowflake primeiro — fonte de verdade
-            sf_upload_id = persist_upload_batch(
+            sf_result = persist_upload_batch(
                 supplier_id=supplier_id,
                 supplier_name=supplier_name,
                 user_id=st.session_state.get("user_id") or supplier_id,
@@ -556,12 +556,14 @@ def render() -> None:
                 uploaded_by=supplier_email,
                 report_type=report_type,
             )
-            if sf_upload_id is None:
+            if sf_result is None:
                 st.error(
                     "Falha ao registrar upload no Snowflake. "
                     "O arquivo não foi persistido. Tente novamente."
                 )
                 return
+            sf_upload_id = sf_result["upload_id"]
+            sf_version = sf_result["version"]
 
             # Registrar em session_state (temporário — leitura ainda depende disso)
             upload_id_final = register_upload(
@@ -592,6 +594,31 @@ def render() -> None:
             upload_rec = get_session_upload_by_id(upload_id_final)
             if upload_rec:
                 staging_df["upload_version"] = upload_rec["version"]
+
+            # Persistir linhas válidas em TRUSTED.FORECAST_VALIDATED (Snowflake)
+            # Usa sf_version (versão real do Snowflake) — não a versão do session_state
+            staging_df["upload_version"] = sf_version
+            trusted_count = persist_validated_forecast(
+                upload_id=upload_id_final,
+                supplier_id=supplier_id,
+                supplier_name=supplier_name,
+                upload_version=sf_version,
+                source_file_name=file_name,
+                staging_df=staging_df,
+            )
+            if trusted_count == 0 and len(staging_df) > 0:
+                st.error(
+                    "Falha ao persistir dados validados no Snowflake. "
+                    "O upload foi registrado mas as linhas não foram salvas."
+                )
+                return
+
+            _logger.info(
+                "Forecast validado persistido: upload_id=%s, linhas=%d",
+                upload_id_final, trusted_count,
+            )
+
+            # session_state (temporário — tela de Forecasts Validados ainda lê daqui)
             register_validated_forecast(upload_id_final, staging_df)
             _sync_supplier_after_upload(supplier_id)
 
@@ -608,7 +635,7 @@ def render() -> None:
             errors_list = result.errors_dataframe.to_dict("records")
 
             # Persistir upload inválido no Snowflake
-            sf_upload_id = persist_upload_batch(
+            sf_result = persist_upload_batch(
                 supplier_id=supplier_id,
                 supplier_name=supplier_name,
                 user_id=st.session_state.get("user_id") or supplier_id,
@@ -620,12 +647,13 @@ def render() -> None:
                 uploaded_by=supplier_email,
                 report_type=report_type,
             )
-            if sf_upload_id is None:
+            if sf_result is None:
                 st.error(
                     "Falha ao registrar upload no Snowflake. "
                     "O arquivo não foi persistido. Tente novamente."
                 )
                 return
+            sf_upload_id = sf_result["upload_id"]
 
             # Persistir erros de validação no Snowflake
             errors_persisted = persist_validation_errors(
