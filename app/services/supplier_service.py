@@ -5,13 +5,13 @@ Servico de dados de fornecedores.
 Le e grava fornecedores na tabela CONTROL.SUPPLIERS via Snowflake.
 """
 
-import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
 from services.snowflake_service import execute_query, get_snowflake_session
+from utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
 
@@ -108,11 +108,12 @@ def create_supplier(name: str, email: str, status: str = "active") -> Optional[S
     import uuid
     supplier_id = str(uuid.uuid4())[:36]
     code = get_next_supplier_code()
+    logger.info("create_supplier: name=%s, email=%s, code=%s", name, email, code)
 
     session = get_snowflake_session()
     if session is None:
         logger.error(
-            "[supplier_service] create_supplier falhou: sessão Snowflake indisponível. "
+            "create_supplier falhou: sessão Snowflake indisponível. "
             "Verifique logs de snowflake_service para detalhes da conexão."
         )
         return None
@@ -132,7 +133,7 @@ def create_supplier(name: str, email: str, status: str = "active") -> Optional[S
         session.sql(sql).collect()
     except Exception as exc:
         logger.error(
-            "[supplier_service] create_supplier falhou ao executar INSERT.\n"
+            "create_supplier falhou ao executar INSERT.\n"
             "  SQL: %s\n"
             "  erro: %s\n"
             "  tipo: %s\n"

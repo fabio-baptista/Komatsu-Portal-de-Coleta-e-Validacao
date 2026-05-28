@@ -537,3 +537,142 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
         timeline=          extra.get("timeline", []),
         validation_checks= extra.get("validation_checks", []),
     )
+
+
+# ---------------------------------------------------------------------------
+# Persistência em Snowflake — CONTROL.UPLOAD_BATCHES
+# ---------------------------------------------------------------------------
+
+import uuid
+
+from utils.logger import get_logger
+
+_upload_logger = get_logger(__name__)
+
+_DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
+
+
+def persist_upload_batch(
+    *,
+    supplier_id: str,
+    supplier_name: str,
+    user_id: str,
+    file_name: str,
+    reference_period: str,
+    status: str,
+    valid_rows: int,
+    invalid_rows: int,
+    uploaded_by: str,
+    report_type: str = "Forecast DB",
+    window_id: str | None = None,
+) -> str | None:
+    """
+    Persiste um registro de upload em CONTROL.UPLOAD_BATCHES no Snowflake.
+
+    Lógica de versionamento:
+      - Calcula version_key = supplier_id|report_type|reference_period
+      - Calcula version = MAX(version) + 1 para a mesma version_key
+      - Se status=VALID: marca uploads anteriores ativos da mesma key como REPLACED
+
+    Retorna:
+        upload_id (UUID) se INSERT bem-sucedido, None se falhar.
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    _upload_logger.info(
+        "persist_upload_batch: supplier=%s, period=%s, status=%s, file=%s",
+        supplier_id, reference_period, status, file_name,
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "persist_upload_batch: sessão Snowflake indisponível."
+        )
+        return None
+
+    upload_id = str(uuid.uuid4())
+    version_key = f"{supplier_id.upper()}|{report_type.strip()}|{reference_period.strip()}"
+    status_upper = status.upper()  # VALID / INVALID
+    is_active = status_upper == "VALID"
+    total_rows = valid_rows + invalid_rows
+
+    # 1. Calcular versão
+    # Uploads INVALID recebem VERSION=0 (sentinela — não consomem numeração).
+    # Uploads VALID incrementam com base em versões reais (VALID/REPLACED/CANCELLED).
+    if not is_active:
+        next_version = 0
+    else:
+        try:
+            version_df = session.sql(f"""
+                SELECT COALESCE(MAX(VERSION), 0) AS MAX_V
+                FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+                WHERE VERSION_KEY = '{version_key.replace("'", "''")}'
+                  AND STATUS IN ('VALID', 'REPLACED', 'CANCELLED')
+            """).to_pandas()
+            next_version = int(version_df.iloc[0]["MAX_V"]) + 1 if version_df is not None and not version_df.empty else 1
+        except Exception as exc:
+            _upload_logger.error(
+                "Falha ao calcular versão: %s", exc
+            )
+            return None
+
+    # 2. Se VALID, marcar uploads anteriores como REPLACED
+    if is_active:
+        try:
+            session.sql(f"""
+                UPDATE {_DATABASE}.CONTROL.UPLOAD_BATCHES
+                SET STATUS = 'REPLACED', IS_ACTIVE = FALSE
+                WHERE VERSION_KEY = '{version_key.replace("'", "''")}'
+                  AND IS_ACTIVE = TRUE
+            """).collect()
+        except Exception as exc:
+            _upload_logger.error(
+                "Falha ao marcar uploads anteriores como REPLACED: %s", exc
+            )
+            return None
+
+    # 3. INSERT do novo registro
+    safe_name = supplier_name.replace("'", "''")
+    safe_file = file_name.replace("'", "''")
+    safe_by = uploaded_by.replace("'", "''")
+    safe_user_id = user_id.replace("'", "''") if user_id else supplier_id
+    window_val = f"'{window_id}'" if window_id else "NULL"
+
+    insert_sql = f"""
+        INSERT INTO {_DATABASE}.CONTROL.UPLOAD_BATCHES (
+            UPLOAD_ID, SUPPLIER_ID, SUPPLIER_NAME, USER_ID,
+            REPORT_TYPE, REFERENCE_PERIOD, VERSION, VERSION_KEY,
+            STATUS, IS_ACTIVE, FILE_NAME,
+            TOTAL_ROWS, VALID_ROWS, INVALID_ROWS,
+            UPLOADED_BY, WINDOW_ID
+        ) VALUES (
+            '{upload_id}', '{supplier_id}', '{safe_name}', '{safe_user_id}',
+            '{report_type}', '{reference_period}', {next_version}, '{version_key.replace("'", "''")}',
+            '{status_upper}', {is_active}, '{safe_file}',
+            {total_rows}, {valid_rows}, {invalid_rows},
+            '{safe_by}', {window_val}
+        )
+    """
+
+    try:
+        session.sql(insert_sql).collect()
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_upload_batch INSERT falhou.\n"
+            "  SQL: %s\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            insert_sql[:500], exc, type(exc).__name__,
+        )
+        return None
+
+    _upload_logger.info(
+        "Upload persistido: id=%s, supplier=%s, period=%s, "
+        "version=%d, status=%s, valid_rows=%d, invalid_rows=%d",
+        upload_id, supplier_id, reference_period, next_version, status_upper,
+        valid_rows, invalid_rows,
+    )
+
+    return upload_id
+

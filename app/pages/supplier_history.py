@@ -17,6 +17,21 @@ from utils.streamlit_compat import safe_rerun
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _format_window_label(window: dict | None) -> str:
+    """Formata label da janela de forma defensiva, sem KeyError."""
+    if not window:
+        return "—"
+    label = window.get("label", "Janela atual")
+    closes = window.get("closes_at") or window.get("end_date")
+    if closes and closes != "—":
+        return f"{label} · encerra em {closes}"
+    return label
+
+
+# ---------------------------------------------------------------------------
 # Componentes internos da tela
 # ---------------------------------------------------------------------------
 
@@ -159,7 +174,7 @@ def _render_cancel_section(records: list[UploadRecord]) -> None:
         return
 
     window = get_current_open_window()
-    window_label = f"{window['label']} · encerra em {window['closes_at']}" if window else "—"
+    window_label = _format_window_label(window)
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
     st.markdown(

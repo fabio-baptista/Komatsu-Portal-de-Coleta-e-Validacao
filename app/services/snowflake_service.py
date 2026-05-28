@@ -14,15 +14,14 @@ Regras:
   - Falha controlada: nenhuma exceção propaga para a UI.
 """
 
-import logging
 import os
 from typing import Optional
 
 import pandas as pd
 
-# Garante que logs ERROR/WARNING sejam visíveis no terminal do Streamlit
-logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
-logger = logging.getLogger(__name__)
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Cache da sessão local para evitar reconexões a cada chamada
 _local_session_cache = None
@@ -91,13 +90,13 @@ def get_snowflake_session():
             "connection_name", _LOCAL_CONNECTION_NAME
         ).create()
         logger.info(
-            "[snowflake_service] Sessão local criada via conexão '%s'.",
+            "Sessão local criada via conexão '%s'.",
             _LOCAL_CONNECTION_NAME,
         )
         return _local_session_cache
     except Exception as exc:
         logger.error(
-            "[snowflake_service] FALHA ao criar sessão local.\n"
+            "FALHA ao criar sessão local.\n"
             "  connection_name: %s\n"
             "  config_file: ~/.snowflake/connections.toml\n"
             "  erro: %s\n"
@@ -139,7 +138,7 @@ def get_current_snowflake_user() -> Optional[str]:
         return None
     except Exception as exc:
         logger.warning(
-            "[snowflake_service] Falha ao obter usuário Snowflake: %s", exc
+            "Falha ao obter usuário Snowflake: %s", exc
         )
         return None
 
@@ -175,7 +174,7 @@ def execute_query(
     session = get_snowflake_session()
     if session is None:
         logger.debug(
-            "[snowflake_service] execute_query ignorado — sem sessão Snowflake."
+            "execute_query ignorado — sem sessão Snowflake."
         )
         return None
 
@@ -197,7 +196,7 @@ def execute_query(
         return result
     except Exception as exc:
         logger.error(
-            "[snowflake_service] Erro ao executar query: %s\nQuery: %s",
+            "Erro ao executar query: %s\nQuery: %s",
             exc, final_query[:200],
         )
         return None
@@ -231,7 +230,7 @@ def read_table(
     session = get_snowflake_session()
     if session is None:
         logger.debug(
-            "[snowflake_service] read_table(%s) ignorado — sem sessão Snowflake.",
+            "read_table(%s) ignorado — sem sessão Snowflake.",
             table_name,
         )
         return None
@@ -243,7 +242,7 @@ def read_table(
         return session.sql(query).to_pandas()
     except Exception as exc:
         logger.error(
-            "[snowflake_service] Erro ao ler tabela '%s': %s", table_name, exc
+            "Erro ao ler tabela '%s': %s", table_name, exc
         )
         return None
 
@@ -283,14 +282,14 @@ def write_dataframe_to_table(
     session = get_snowflake_session()
     if session is None:
         logger.debug(
-            "[snowflake_service] write_dataframe_to_table(%s) ignorado — sem sessão.",
+            "write_dataframe_to_table(%s) ignorado — sem sessão.",
             table_name,
         )
         return False
 
     if df is None or df.empty:
         logger.warning(
-            "[snowflake_service] write_dataframe_to_table(%s): DataFrame vazio.",
+            "write_dataframe_to_table(%s): DataFrame vazio.",
             table_name,
         )
         return False
@@ -299,13 +298,13 @@ def write_dataframe_to_table(
         snowpark_df = session.create_dataframe(df)
         snowpark_df.write.mode(mode).save_as_table(table_name)
         logger.info(
-            "[snowflake_service] %d linhas escritas em '%s' (mode=%s).",
+            "%d linhas escritas em '%s' (mode=%s).",
             len(df), table_name, mode,
         )
         return True
     except Exception as exc:
         logger.error(
-            "[snowflake_service] Erro ao escrever em '%s': %s", table_name, exc
+            "Erro ao escrever em '%s': %s", table_name, exc
         )
         return False
 
@@ -363,7 +362,7 @@ def get_connection_info() -> dict:
 
     except Exception as exc:
         logger.warning(
-            "[snowflake_service] Falha ao obter informações de conexão: %s", exc
+            "Falha ao obter informações de conexão: %s", exc
         )
 
     return info

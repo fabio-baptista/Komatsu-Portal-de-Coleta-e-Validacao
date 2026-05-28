@@ -15,9 +15,13 @@ from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
 from services.validation_service import ValidationResult, validate_forecast
 from services.forecast_service import NormalizationResult, normalize_forecast
+from services.upload_service import persist_upload_batch
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
+from utils.logger import get_logger
 from utils.session_state import register_upload, register_validated_forecast
 from utils.streamlit_compat import safe_rerun
+
+_logger = get_logger(__name__)
 
 # Caminhos oficiais dos templates
 _TEMPLATE_PATH      = Path(__file__).parent.parent / "templates" / "template_forecast.xlsx"
@@ -510,6 +514,10 @@ def render() -> None:
         result = validate_forecast(df, supplier_name=supplier_name)
 
     if result.is_valid:
+        _logger.info(
+            "Validação OK: supplier=%s, file=%s, rows=%d",
+            supplier_id, file_name, result.summary.get("total_rows", 0),
+        )
         # Normalização para extrair período e obter staging_dataframe
         norm_result = normalize_forecast(
             normalized_df=result.normalized_dataframe,
@@ -535,6 +543,27 @@ def render() -> None:
         report_type = "Forecast DB"
 
         if not already_registered:
+            # Persistir no Snowflake primeiro — fonte de verdade
+            sf_upload_id = persist_upload_batch(
+                supplier_id=supplier_id,
+                supplier_name=supplier_name,
+                user_id=st.session_state.get("user_id") or supplier_id,
+                file_name=file_name,
+                reference_period=period,
+                status="valid",
+                valid_rows=result.summary["total_rows"],
+                invalid_rows=0,
+                uploaded_by=supplier_email,
+                report_type=report_type,
+            )
+            if sf_upload_id is None:
+                st.error(
+                    "Falha ao registrar upload no Snowflake. "
+                    "O arquivo não foi persistido. Tente novamente."
+                )
+                return
+
+            # Registrar em session_state (temporário — leitura ainda depende disso)
             upload_id_final = register_upload(
                 file_name=     file_name,
                 supplier_id=   supplier_id,
@@ -546,6 +575,14 @@ def render() -> None:
                 report_type=   report_type,
                 uploaded_by=   supplier_email,
             )
+            # Sobrescrever o upload_id local com o UUID do Snowflake
+            # para manter consistência entre session_state e banco
+            for rec in st.session_state.get("session_uploads", []):
+                if rec.get("upload_id") == upload_id_final:
+                    rec["upload_id"] = sf_upload_id
+                    break
+            upload_id_final = sf_upload_id
+
             st.session_state.last_processed_file = file_key
 
             # Salvar linhas normalizadas com o upload_id real
@@ -561,11 +598,37 @@ def render() -> None:
         _render_success_supplier(result)
 
     else:
+        _logger.info(
+            "Validação FALHOU: supplier=%s, file=%s, erros=%d",
+            supplier_id, file_name, len(result.errors_dataframe),
+        )
         if not already_registered:
             period      = _extract_period_from_df(df)
             report_type = "Forecast DB"
             errors_list = result.errors_dataframe.to_dict("records")
-            register_upload(
+
+            # Persistir upload inválido no Snowflake
+            sf_upload_id = persist_upload_batch(
+                supplier_id=supplier_id,
+                supplier_name=supplier_name,
+                user_id=st.session_state.get("user_id") or supplier_id,
+                file_name=file_name,
+                reference_period=period,
+                status="invalid",
+                valid_rows=0,
+                invalid_rows=len(result.errors_dataframe),
+                uploaded_by=supplier_email,
+                report_type=report_type,
+            )
+            if sf_upload_id is None:
+                st.error(
+                    "Falha ao registrar upload no Snowflake. "
+                    "O arquivo não foi persistido. Tente novamente."
+                )
+                return
+
+            # Registrar em session_state (temporário)
+            upload_id_local = register_upload(
                 file_name=     file_name,
                 supplier_id=   supplier_id,
                 supplier_name= supplier_name,
@@ -577,6 +640,16 @@ def render() -> None:
                 errors=        errors_list,
                 uploaded_by=   supplier_email,
             )
+            # Sobrescrever o upload_id local com o UUID do Snowflake
+            for rec in st.session_state.get("session_uploads", []):
+                if rec.get("upload_id") == upload_id_local:
+                    rec["upload_id"] = sf_upload_id
+                    break
+            # Atualizar chave dos erros
+            errs = st.session_state.get("session_errors", {})
+            if upload_id_local in errs:
+                errs[sf_upload_id] = errs.pop(upload_id_local)
+
             st.session_state.last_processed_file = file_key
             _sync_supplier_after_upload(supplier_id)
 
