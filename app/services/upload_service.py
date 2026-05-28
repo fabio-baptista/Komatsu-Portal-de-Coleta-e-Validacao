@@ -676,3 +676,84 @@ def persist_upload_batch(
 
     return upload_id
 
+
+# ---------------------------------------------------------------------------
+# Persistência em Snowflake — CONTROL.VALIDATION_ERRORS
+# ---------------------------------------------------------------------------
+
+def persist_validation_errors(
+    upload_id: str,
+    errors: list[dict],
+) -> int:
+    """
+    Persiste erros de validação em CONTROL.VALIDATION_ERRORS.
+
+    Parâmetros:
+        upload_id — UUID retornado por persist_upload_batch()
+        errors   — lista de dicts com chaves:
+                   linha, coluna, valor_informado, erro, orientacao_correcao
+
+    Retorna:
+        Quantidade de erros inseridos com sucesso (0 se falhar ou lista vazia).
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    if not errors:
+        _upload_logger.info(
+            "persist_validation_errors: lista vazia — nada a persistir."
+        )
+        return 0
+
+    _upload_logger.info(
+        "persist_validation_errors: início — upload_id=%s, total_erros=%d",
+        upload_id, len(errors),
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "persist_validation_errors: sessão Snowflake indisponível."
+        )
+        return 0
+
+    # Construir VALUES multi-row
+    value_rows: list[str] = []
+    for err in errors:
+        error_id = str(uuid.uuid4())
+        row_number = int(err.get("linha", 0))
+        column_name = str(err.get("coluna", ""))[:200].replace("'", "''")
+        value_informed = str(err.get("valor_informado", "") or "")[:1000].replace("'", "''")
+        error_type = str(err.get("erro", ""))[:100].replace("'", "''")
+        correction = str(err.get("orientacao_correcao", "") or "")[:500].replace("'", "''")
+
+        value_rows.append(
+            f"('{error_id}', '{upload_id}', {row_number}, "
+            f"'{column_name}', '{value_informed}', '{error_type}', '{correction}')"
+        )
+
+    insert_sql = f"""
+        INSERT INTO {_DATABASE}.CONTROL.VALIDATION_ERRORS (
+            ERROR_ID, UPLOAD_ID, ROW_NUMBER,
+            COLUMN_NAME, VALUE_INFORMED, ERROR_TYPE, CORRECTION_GUIDANCE
+        ) VALUES
+        {', '.join(value_rows)}
+    """
+
+    try:
+        session.sql(insert_sql).collect()
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_validation_errors: INSERT falhou.\n"
+            "  upload_id: %s\n"
+            "  erros_tentados: %d\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            upload_id, len(errors), exc, type(exc).__name__,
+        )
+        return 0
+
+    _upload_logger.info(
+        "persist_validation_errors: sucesso — %d erros inseridos para upload_id=%s",
+        len(errors), upload_id,
+    )
+    return len(errors)

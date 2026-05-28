@@ -15,7 +15,7 @@ from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
 from services.validation_service import ValidationResult, validate_forecast
 from services.forecast_service import NormalizationResult, normalize_forecast
-from services.upload_service import persist_upload_batch
+from services.upload_service import persist_upload_batch, persist_validation_errors
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
 from utils.logger import get_logger
 from utils.session_state import register_upload, register_validated_forecast
@@ -627,7 +627,24 @@ def render() -> None:
                 )
                 return
 
-            # Registrar em session_state (temporário)
+            # Persistir erros de validação no Snowflake
+            errors_persisted = persist_validation_errors(
+                upload_id=sf_upload_id,
+                errors=errors_list,
+            )
+            if errors_persisted == 0 and len(errors_list) > 0:
+                st.error(
+                    "Falha ao registrar erros de validação no Snowflake. "
+                    "O upload foi registrado mas os erros não foram persistidos."
+                )
+                return
+
+            _logger.info(
+                "Erros de validação persistidos: upload_id=%s, erros=%d",
+                sf_upload_id, errors_persisted,
+            )
+
+            # Registrar em session_state (temporário — tela de erros ainda lê daqui)
             upload_id_local = register_upload(
                 file_name=     file_name,
                 supplier_id=   supplier_id,
