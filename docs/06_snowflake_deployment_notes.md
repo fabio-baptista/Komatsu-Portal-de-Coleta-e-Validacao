@@ -14,3 +14,34 @@ Incluir:
 
 Não criar comandos definitivos ainda.
 Não assumir nomes reais de database, warehouse ou roles.
+
+---
+
+## Variáveis de Ambiente para Deploy
+
+### APP_ENV
+
+| Ambiente | Valor | Efeito |
+|----------|-------|--------|
+| Desenvolvimento local | `dev` (default) | Ferramentas de teste habilitadas |
+| Testes automatizados | `test` | Idem |
+| Streamlit in Snowflake (prod) | `production` | Ferramentas de teste ocultas e bloqueadas |
+
+**Obrigatório em produção**: definir `APP_ENV=production` antes de publicar o app.
+
+### SNOWFLAKE_CONNECTION_NAME
+
+Usado apenas em execução local. Define qual conexão de `~/.snowflake/connections.toml` o Snowpark usa para criar sessão.
+
+- Default: `KOMATSU_BRAZIL_INTERNATIONAL_PAT`
+- Em Streamlit in Snowflake: não se aplica (sessão via `get_active_session()`)
+
+### Checklist de deploy para produção
+
+- [ ] `APP_ENV=production` configurado
+- [ ] Database, schema, warehouse e role revisados
+- [ ] Botão "Limpar dados de teste" não aparece na UI
+- [ ] `clear_dev_data()` recusa execução
+- [ ] Dados seed/base validados (5 suppliers, 6 users, 1 submission window)
+- [ ] Credenciais de desenvolvimento removidas/rotacionadas
+- [ ] `DEMO_MODE=False` confirmado
