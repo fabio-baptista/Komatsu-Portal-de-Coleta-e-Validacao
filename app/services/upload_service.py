@@ -142,22 +142,43 @@ def get_supplier_uploads(
     """
     Retorna a lista de envios do fornecedor informado.
 
+    Prioridade:
+      1. Snowflake CONTROL.UPLOAD_BATCHES (fonte de verdade)
+      2. Fallback: session_state.session_uploads (se Snowflake vazio)
+      3. Fallback: dados mock (apenas quando DEMO_MODE=True e include_mock=True)
+
     Parâmetros:
         supplier_id  — ID do fornecedor (vem do session_state)
         include_mock — Se True (padrão), mescla uploads da sessão com dados mock.
-                       Ignorado quando DEMO_MODE=False: nesse caso apenas dados
-                       de sessão são retornados independente do valor do parâmetro.
+                       Ignorado quando DEMO_MODE=False.
     """
     from utils.constants import DEMO_MODE
     from utils.session_state import get_session_uploads, get_cancellation
 
-    # Uploads da sessão (mais recentes primeiro — já têm status mutado in-place)
+    # 1. Fonte de verdade: Snowflake
+    sf_dicts = get_supplier_upload_batches(supplier_id)
+    if sf_dicts:
+        _upload_logger.info(
+            "get_supplier_uploads: %d uploads do Snowflake para supplier_id=%s",
+            len(sf_dicts), supplier_id,
+        )
+        return [_dict_to_record(d) for d in sf_dicts]
+
+    # 2. Fallback: uploads da sessão
     session_records = [_dict_to_record(d) for d in get_session_uploads(supplier_id)]
+
+    if session_records:
+        _upload_logger.warning(
+            "get_supplier_uploads: fallback para session_state — "
+            "%d uploads para supplier_id=%s. Snowflake não retornou dados.",
+            len(session_records), supplier_id,
+        )
 
     # DEMO_MODE=False → nunca misturar dados mock, independente de include_mock
     if not include_mock or not DEMO_MODE:
         return session_records
 
+    # 3. Fallback: dados mock (DEMO_MODE=True)
     # Períodos com upload ativo e válido na sessão
     valid_session_periods = {r.period for r in session_records if r.status == "valid"}
 
@@ -757,3 +778,170 @@ def persist_validation_errors(
         len(errors), upload_id,
     )
     return len(errors)
+
+
+# ---------------------------------------------------------------------------
+# Leitura de erros persistidos — CONTROL.VALIDATION_ERRORS
+# ---------------------------------------------------------------------------
+
+def get_validation_errors(upload_id: str) -> list[dict]:
+    """
+    Busca erros de validação no Snowflake para o upload_id informado.
+
+    Retorna lista de dicts com chaves no formato esperado pela UI:
+        linha, coluna, valor_informado, erro, orientacao_correcao
+
+    Retorna lista vazia se não encontrar erros ou se a sessão estiver indisponível.
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    _upload_logger.info(
+        "get_validation_errors: consultando upload_id=%s", upload_id,
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "get_validation_errors: sessão Snowflake indisponível."
+        )
+        return []
+
+    safe_id = upload_id.replace("'", "''")
+    query = f"""
+        SELECT ROW_NUMBER, COLUMN_NAME, VALUE_INFORMED,
+               ERROR_TYPE, CORRECTION_GUIDANCE
+        FROM {_DATABASE}.CONTROL.VALIDATION_ERRORS
+        WHERE UPLOAD_ID = '{safe_id}'
+        ORDER BY ROW_NUMBER
+    """
+
+    try:
+        df = session.sql(query).to_pandas()
+    except Exception as exc:
+        _upload_logger.error(
+            "get_validation_errors: falha na query.\n"
+            "  upload_id: %s\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            upload_id, exc, type(exc).__name__,
+        )
+        return []
+
+    if df is None or df.empty:
+        _upload_logger.info(
+            "get_validation_errors: nenhum erro encontrado para upload_id=%s",
+            upload_id,
+        )
+        return []
+
+    # Mapear colunas Snowflake → formato esperado pela UI
+    results: list[dict] = []
+    for _, row in df.iterrows():
+        results.append({
+            "linha":               int(row["ROW_NUMBER"]),
+            "coluna":              str(row["COLUMN_NAME"]),
+            "valor_informado":     str(row["VALUE_INFORMED"]) if row["VALUE_INFORMED"] else "",
+            "erro":                str(row["ERROR_TYPE"]),
+            "orientacao_correcao": str(row["CORRECTION_GUIDANCE"]) if row["CORRECTION_GUIDANCE"] else "",
+        })
+
+    _upload_logger.info(
+        "get_validation_errors: %d erros retornados para upload_id=%s",
+        len(results), upload_id,
+    )
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Leitura de uploads do fornecedor — CONTROL.UPLOAD_BATCHES
+# ---------------------------------------------------------------------------
+
+def get_supplier_upload_batches(supplier_id: str) -> list[dict]:
+    """
+    Busca uploads do fornecedor em CONTROL.UPLOAD_BATCHES no Snowflake.
+
+    Retorna list[dict] compatível com _dict_to_record():
+        upload_id, file_name, period, version, status, sent_at,
+        valid_rows, invalid_rows, supplier_id, is_active, report_type
+
+    Ordenado por UPLOADED_AT DESC (mais recente primeiro).
+    Retorna lista vazia se não encontrar ou se a sessão estiver indisponível.
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    _upload_logger.info(
+        "get_supplier_upload_batches: consultando supplier_id=%s", supplier_id,
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "get_supplier_upload_batches: sessão Snowflake indisponível."
+        )
+        return []
+
+    safe_id = supplier_id.replace("'", "''").upper()
+    query = f"""
+        SELECT UPLOAD_ID, SUPPLIER_ID, FILE_NAME, REFERENCE_PERIOD,
+               VERSION, STATUS, IS_ACTIVE, REPORT_TYPE,
+               VALID_ROWS, INVALID_ROWS, UPLOADED_AT
+        FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+        WHERE SUPPLIER_ID = '{safe_id}'
+        ORDER BY UPLOADED_AT DESC
+    """
+
+    try:
+        df = session.sql(query).to_pandas()
+    except Exception as exc:
+        _upload_logger.error(
+            "get_supplier_upload_batches: falha na query.\n"
+            "  supplier_id: %s\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            supplier_id, exc, type(exc).__name__,
+        )
+        return []
+
+    if df is None or df.empty:
+        _upload_logger.info(
+            "get_supplier_upload_batches: nenhum upload encontrado para supplier_id=%s",
+            supplier_id,
+        )
+        return []
+
+    # Mapear colunas Snowflake → formato dict compatível com _dict_to_record
+    results: list[dict] = []
+    for _, row in df.iterrows():
+        # Status: VALID→valid, INVALID→invalid, REPLACED→replaced, CANCELLED→canceled
+        raw_status = str(row["STATUS"]).lower()
+        if raw_status == "cancelled":
+            raw_status = "canceled"
+
+        # UPLOADED_AT → "DD/MM/AAAA HH:MM"
+        uploaded_at = row["UPLOADED_AT"]
+        try:
+            import pandas as pd
+            ts = pd.Timestamp(uploaded_at)
+            sent_at = ts.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            sent_at = str(uploaded_at)[:16] if uploaded_at else "—"
+
+        results.append({
+            "upload_id":    str(row["UPLOAD_ID"]),
+            "file_name":    str(row["FILE_NAME"]),
+            "period":       str(row["REFERENCE_PERIOD"]),
+            "version":      int(row["VERSION"]),
+            "status":       raw_status,
+            "sent_at":      sent_at,
+            "valid_rows":   int(row["VALID_ROWS"]),
+            "invalid_rows": int(row["INVALID_ROWS"]),
+            "supplier_id":  str(row["SUPPLIER_ID"]),
+            "is_active":    bool(row["IS_ACTIVE"]),
+            "report_type":  str(row["REPORT_TYPE"]),
+        })
+
+    _upload_logger.info(
+        "get_supplier_upload_batches: %d uploads retornados para supplier_id=%s",
+        len(results), supplier_id,
+    )
+    return results
