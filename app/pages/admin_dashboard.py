@@ -14,7 +14,7 @@ from components.badges import status_badge, version_badge
 from components.cards import kpi_card, render_cards_row
 from services.mock_data_service import get_current_open_window
 from services.supplier_service import get_all_suppliers
-from services.upload_service import get_admin_status_rows, get_all_uploads, get_canceled_uploads_count
+from services.upload_service import get_admin_status_rows, get_all_uploads, get_canceled_uploads_count, get_available_periods_from_snowflake
 from utils.session_state import navigate_to
 from utils.streamlit_compat import safe_rerun
 
@@ -53,16 +53,22 @@ def _period_label(period: str) -> str:
 
 def _get_available_periods() -> list[str]:
     """
-    Retorna todos os períodos presentes nos uploads (sessão + mock), ordenados
+    Retorna todos os períodos presentes nos uploads, ordenados
     do mais recente ao mais antigo, normalizados para YYYY-MM.
     Garante que o período aberto atual sempre figure na lista.
+    Prioridade: Snowflake → fallback session/mock.
     """
     from utils.dates import to_period_ym
-    all_ups = get_all_uploads(include_mock=True)
-    # Normalizar para YYYY-MM antes da deduplicação: evita que "2026-05-01"
-    # e "2026-05" apareçam como entradas separadas no dropdown.
-    normalized = {to_period_ym(u.period) for u in all_ups}
-    periods = sorted([p for p in normalized if p], reverse=True)
+
+    # 1. Tentar Snowflake
+    sf_periods = get_available_periods_from_snowflake()
+    if sf_periods:
+        periods = sorted([p for p in sf_periods if p], reverse=True)
+    else:
+        # 2. Fallback: session/mock
+        all_ups = get_all_uploads(include_mock=True)
+        normalized = {to_period_ym(u.period) for u in all_ups}
+        periods = sorted([p for p in normalized if p], reverse=True)
 
     window = get_current_open_window()
     if window and window["period"] and window["period"] not in periods:

@@ -20,10 +20,14 @@ import streamlit as st
 
 from components.badges import version_badge
 from services.mock_data_service import get_mock_validated_forecast, get_current_open_window
+from services.forecast_service import get_validated_forecasts_from_snowflake
 from komatsu_ds import layout
 from utils.constants import DEMO_MODE
 from utils.dates import format_period_pt
+from utils.logger import get_logger
 from utils.session_state import get_session_validated_forecasts
+
+_logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -390,26 +394,37 @@ def render() -> None:
     """
     _render_page_header()
 
-    # --- Fonte de dados ---
-    session_rows = _session_to_rows()
-    has_session  = len(session_rows) > 0
+    # --- Fonte de dados (prioridade: Snowflake → sessão → mock) ---
+    demo_mode = False
 
-    if has_session:
-        base_rows = session_rows
-        demo_mode = False
-    elif DEMO_MODE:
-        # Fallback demo só quando DEMO_MODE=True explícito
-        mock_rows = _mock_to_rows()
-        if mock_rows:
-            base_rows = mock_rows
-            demo_mode = True
-        else:
-            base_rows = []
-            demo_mode = False
+    # 1. Fonte de verdade: Snowflake TRUSTED.FORECAST_VALIDATED
+    sf_rows = get_validated_forecasts_from_snowflake()
+    if sf_rows:
+        _logger.info(
+            "validated_data: %d registros carregados do Snowflake.", len(sf_rows),
+        )
+        base_rows = sf_rows
     else:
-        # DEMO_MODE=False e sem uploads reais → estado vazio
-        base_rows = []
-        demo_mode = False
+        # 2. Fallback: session_state (uploads da sessão atual)
+        session_rows = _session_to_rows()
+        if session_rows:
+            _logger.warning(
+                "validated_data: fallback para session_state — %d registros. "
+                "Snowflake não retornou dados.", len(session_rows),
+            )
+            base_rows = session_rows
+        elif DEMO_MODE:
+            # 3. Fallback: dados de demonstração
+            mock_rows = _mock_to_rows()
+            if mock_rows:
+                base_rows = mock_rows
+                demo_mode = True
+            else:
+                base_rows = []
+        else:
+            # Nenhuma fonte disponível
+            _logger.info("validated_data: nenhum dado encontrado em nenhuma fonte.")
+            base_rows = []
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
 
@@ -441,8 +456,8 @@ def render() -> None:
         _render_empty_state()
         return
 
-    # Nota de contexto (sessão)
-    if has_session:
+    # Nota de contexto (apenas quando fallback de sessão é usado)
+    if base_rows and base_rows[0].get("_source") == "session":
         _render_session_note()
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)

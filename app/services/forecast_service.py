@@ -360,3 +360,103 @@ def get_summary(records: list[ForecastRecord]) -> dict:
         "period_label":   ", ".join(sorted(periods, reverse=True)) if periods else "—",
         "active_version": max(versions) if versions else "—",
     }
+
+
+# ---------------------------------------------------------------------------
+# Leitura de forecasts validados do Snowflake — TRUSTED.FORECAST_VALIDATED
+# ---------------------------------------------------------------------------
+
+_DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
+
+
+def get_validated_forecasts_from_snowflake() -> list[dict]:
+    """
+    Lê forecasts ativos de TRUSTED.FORECAST_VALIDATED no Snowflake.
+
+    Retorna list[dict] no formato esperado pela UI de validated_data.py:
+        supplier, branch, material_code, description, period, _period_key,
+        qty, version, processed_at, source_file, _source
+
+    Retorna lista vazia se não encontrar dados ou se a sessão estiver indisponível.
+    """
+    from services.snowflake_service import get_snowflake_session
+    from utils.logger import get_logger
+    from utils.dates import format_period_pt
+
+    logger = get_logger(__name__)
+
+    logger.info("get_validated_forecasts_from_snowflake: consultando TRUSTED...")
+
+    session = get_snowflake_session()
+    if session is None:
+        logger.error(
+            "get_validated_forecasts_from_snowflake: sessão Snowflake indisponível."
+        )
+        return []
+
+    query = f"""
+        SELECT SUPPLIER_NAME, BRANCH, MATERIAL_CODE, MATERIAL_DESCRIPTION,
+               FORECAST_PERIOD, FORECAST_QUANTITY, UPLOAD_VERSION,
+               UPLOADED_AT, SOURCE_FILE_NAME
+        FROM {_DATABASE}.TRUSTED.FORECAST_VALIDATED
+        WHERE IS_ACTIVE = TRUE
+        ORDER BY UPLOADED_AT DESC
+    """
+
+    try:
+        import pandas as pd
+        df = session.sql(query).to_pandas()
+    except Exception as exc:
+        logger.error(
+            "get_validated_forecasts_from_snowflake: falha na query.\n"
+            "  erro: %s\n  tipo: %s",
+            exc, type(exc).__name__,
+        )
+        return []
+
+    if df is None or df.empty:
+        logger.info(
+            "get_validated_forecasts_from_snowflake: nenhum registro ativo encontrado."
+        )
+        return []
+
+    # Mapear colunas Snowflake → formato UI
+    rows: list[dict] = []
+    for _, row in df.iterrows():
+        # FORECAST_PERIOD é DATE — converter para string "YYYY-MM-DD"
+        period_raw = str(row["FORECAST_PERIOD"])[:10] if row["FORECAST_PERIOD"] else "—"
+
+        # FORECAST_QUANTITY
+        try:
+            qty_val = int(float(row["FORECAST_QUANTITY"]))
+        except (TypeError, ValueError):
+            qty_val = 0
+
+        # UPLOADED_AT — formatar como string
+        uploaded_at = row["UPLOADED_AT"]
+        try:
+            import pandas as _pd
+            ts = _pd.Timestamp(uploaded_at)
+            processed_at = ts.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            processed_at = str(uploaded_at)[:19] if uploaded_at else "—"
+
+        rows.append({
+            "supplier":      str(row["SUPPLIER_NAME"]) if row["SUPPLIER_NAME"] else "—",
+            "branch":        str(row["BRANCH"]) if row["BRANCH"] else "—",
+            "material_code": str(row["MATERIAL_CODE"]) if row["MATERIAL_CODE"] else "—",
+            "description":   str(row["MATERIAL_DESCRIPTION"]) if row["MATERIAL_DESCRIPTION"] else "—",
+            "period":        format_period_pt(period_raw),
+            "_period_key":   period_raw,
+            "qty":           qty_val,
+            "version":       int(row["UPLOAD_VERSION"]),
+            "processed_at":  processed_at,
+            "source_file":   str(row["SOURCE_FILE_NAME"]) if row["SOURCE_FILE_NAME"] else "—",
+            "_source":       "snowflake",
+        })
+
+    logger.info(
+        "get_validated_forecasts_from_snowflake: %d registros ativos retornados.",
+        len(rows),
+    )
+    return rows

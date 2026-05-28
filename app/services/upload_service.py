@@ -299,116 +299,219 @@ def get_admin_status_rows(period: str | None = None) -> list[dict]:
     """
     Constrói a tabela de status por fornecedor para o painel administrativo.
 
+    Prioridade: Snowflake (CONTROL.SUPPLIERS + CONTROL.UPLOAD_BATCHES) → fallback session.
+
     Parâmetros:
         period — período de referência no formato "YYYY-MM".
-                 Se None (padrão), usa o período da janela aberta atualmente.
-
-    Prioridade de fontes (garante consistência com Forecasts Validados):
-    1. session_validated_forecasts (is_active=True) → status "valid"
-       Mesma fonte de Forecasts Validados. Usa forecast_period do arquivo,
-       normalizado por to_period_ym(). Evita dependência do campo "period"
-       em session_uploads, que pode ser "—" por problemas de extração.
-    2. session_uploads com status "invalid" → status "invalid"
-       Quando não há forecast válido ativo mas há upload inválido no período.
-    3. Sem dados → status "pending"
+                 Se None, usa o período da janela aberta.
 
     Retorno: list[dict] com chaves:
         name, code, period, status, last, version, errors, upload_id
     """
     from services.mock_data_service import get_current_open_window
-    from utils.dates import to_period_ym
-    from utils.session_state import get_session_validated_forecasts
+    from services.snowflake_service import get_snowflake_session
 
     if period is None:
         window = get_current_open_window()
         period = window["period"] if window else None
 
-    current_period = period
+    current_period = period or ""
 
-    # --- Fonte primária: forecasts válidos ativos (mesma fonte de Forecasts Validados) ---
-    valid_forecasts = get_session_validated_forecasts()  # já filtra is_active=True
+    # --- Tentar Snowflake ---
+    session = get_snowflake_session()
+    if session is not None:
+        try:
+            sf_rows = _build_admin_rows_from_snowflake(session, current_period)
+            if sf_rows is not None:
+                _upload_logger.info(
+                    "get_admin_status_rows: %d linhas do Snowflake para period=%s",
+                    len(sf_rows), current_period,
+                )
+                return sf_rows
+        except Exception as exc:
+            _upload_logger.error(
+                "get_admin_status_rows: falha Snowflake, usando fallback. erro=%s", exc,
+            )
 
-    # --- Fonte secundária: uploads inválidos para status "invalid" ---
-    all_ups = get_all_uploads(include_mock=True)
+    # --- Fallback: lógica antiga baseada em session_state ---
+    _upload_logger.warning(
+        "get_admin_status_rows: fallback session_state para period=%s", current_period,
+    )
+    return _build_admin_rows_from_session(current_period)
 
+
+def _build_admin_rows_from_snowflake(session, period: str) -> list[dict]:
+    """
+    Constrói status rows diretamente do Snowflake.
+    JOIN CONTROL.SUPPLIERS com CONTROL.UPLOAD_BATCHES filtrado por período.
+    """
+    import pandas as pd
+
+    safe_period = period.replace("'", "''") if period else ""
+
+    # Buscar fornecedores ativos e seu upload mais recente no período
+    query = f"""
+        WITH latest_uploads AS (
+            SELECT
+                SUPPLIER_ID,
+                UPLOAD_ID,
+                STATUS,
+                IS_ACTIVE,
+                VERSION,
+                INVALID_ROWS,
+                UPLOADED_AT,
+                ROW_NUMBER() OVER (
+                    PARTITION BY SUPPLIER_ID
+                    ORDER BY
+                        CASE WHEN STATUS = 'VALID' AND IS_ACTIVE = TRUE THEN 0
+                             WHEN STATUS = 'INVALID' THEN 1
+                             ELSE 2
+                        END,
+                        UPLOADED_AT DESC
+                ) AS RN
+            FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+            WHERE REFERENCE_PERIOD = '{safe_period}'
+        )
+        SELECT
+            s.SUPPLIER_NAME,
+            s.SUPPLIER_CODE,
+            lu.UPLOAD_ID,
+            lu.STATUS AS UPLOAD_STATUS,
+            lu.IS_ACTIVE,
+            lu.VERSION,
+            lu.INVALID_ROWS,
+            lu.UPLOADED_AT
+        FROM {_DATABASE}.CONTROL.SUPPLIERS s
+        LEFT JOIN latest_uploads lu
+            ON s.SUPPLIER_CODE = lu.SUPPLIER_ID AND lu.RN = 1
+        WHERE s.STATUS = 'active'
+        ORDER BY s.SUPPLIER_CODE
+    """
+
+    df = session.sql(query).to_pandas()
+    if df is None:
+        return None
+
+    rows: list[dict] = []
+    for _, row in df.iterrows():
+        name = str(row["SUPPLIER_NAME"])
+        code = str(row["SUPPLIER_CODE"])
+        upload_id = row["UPLOAD_ID"]
+        upload_status = str(row["UPLOAD_STATUS"]) if row["UPLOAD_STATUS"] else None
+
+        if upload_status == "VALID" and row["IS_ACTIVE"]:
+            # Fornecedor com forecast válido ativo
+            uploaded_at = row["UPLOADED_AT"]
+            try:
+                ts = pd.Timestamp(uploaded_at)
+                last = ts.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                last = str(uploaded_at)[:16] if uploaded_at else "—"
+
+            rows.append({
+                "name":      name,
+                "code":      code,
+                "period":    period,
+                "status":    "valid",
+                "last":      last,
+                "version":   int(row["VERSION"]) if row["VERSION"] is not None else 1,
+                "errors":    0,
+                "upload_id": str(upload_id) if upload_id else None,
+            })
+        elif upload_status == "INVALID":
+            # Tem upload inválido — status pendente no painel
+            uploaded_at = row["UPLOADED_AT"]
+            try:
+                ts = pd.Timestamp(uploaded_at)
+                last = ts.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                last = str(uploaded_at)[:16] if uploaded_at else "—"
+
+            rows.append({
+                "name":      name,
+                "code":      code,
+                "period":    period,
+                "status":    "pending",
+                "last":      last,
+                "version":   "—",
+                "errors":    int(row["INVALID_ROWS"]) if row["INVALID_ROWS"] else "—",
+                "upload_id": str(upload_id) if upload_id else None,
+            })
+        else:
+            # Sem upload no período → Pendente
+            rows.append({
+                "name":      name,
+                "code":      code,
+                "period":    period,
+                "status":    "pending",
+                "last":      "—",
+                "version":   "—",
+                "errors":    "—",
+                "upload_id": None,
+            })
+
+    return rows
+
+
+def _build_admin_rows_from_session(period: str) -> list[dict]:
+    """Fallback: lógica antiga baseada em session_state/mock."""
+    from utils.dates import to_period_ym
+    from utils.session_state import get_session_validated_forecasts
     from services.supplier_service import get_all_suppliers
+
+    current_period = period
+    valid_forecasts = get_session_validated_forecasts()
+    all_ups = get_all_uploads(include_mock=True)
 
     rows: list[dict] = []
     for s_rec in get_all_suppliers():
         if s_rec.status == "inactive":
-            continue  # fornecedores inativos não participam da coleta
+            continue
 
         code_upper = s_rec.code.upper()
 
-        # ── 1. Verificar forecasts válidos para este fornecedor no período ──────
-        # Compara supplier_id (= código, ex: "SUP001") e normaliza forecast_period
-        # para "YYYY-MM" antes de comparar com current_period.
         sup_forecasts = [
             f for f in valid_forecasts
             if str(f.get("supplier_id", "")).upper() == code_upper
             and (
-                current_period is None
+                not current_period
                 or to_period_ym(str(f.get("forecast_period", ""))) == current_period
             )
         ]
 
         if sup_forecasts:
             try:
-                latest_f = max(
-                    sup_forecasts,
-                    key=lambda f: str(f.get("uploaded_at", "")),
-                )
+                latest_f = max(sup_forecasts, key=lambda f: str(f.get("uploaded_at", "")))
             except (ValueError, TypeError):
                 latest_f = sup_forecasts[0]
 
             rows.append({
-                "name":      s_rec.name,
-                "code":      s_rec.code,
-                "period":    current_period or "—",
-                "status":    "valid",
-                "last":      str(latest_f.get("uploaded_at", "—")),
-                "version":   int(latest_f.get("upload_version", 1)),
-                "errors":    0,
-                "upload_id": latest_f.get("upload_id"),
+                "name": s_rec.name, "code": s_rec.code, "period": current_period or "—",
+                "status": "valid", "last": str(latest_f.get("uploaded_at", "—")),
+                "version": int(latest_f.get("upload_version", 1)),
+                "errors": 0, "upload_id": latest_f.get("upload_id"),
             })
             continue
 
-        # ── 2. Verificar upload inválido para este fornecedor no período ─────────
-        # Upload inválido = pendente no Painel (não conta como "Com Erro" no card).
-        # O erro fica disponível no histórico/detalhe via Gestão de Fornecedores.
         sup_invalid = [
             u for u in all_ups
-            if u.supplier_id.upper() == code_upper
-            and u.status == "invalid"
-            and (
-                current_period is None
-                or to_period_ym(u.period) == current_period
-            )
+            if u.supplier_id.upper() == code_upper and u.status == "invalid"
+            and (not current_period or to_period_ym(u.period) == current_period)
         ]
 
         if sup_invalid:
             ref = sup_invalid[0]
             rows.append({
-                "name":      s_rec.name,
-                "code":      s_rec.code,
-                "period":    current_period or ref.period,
-                "status":    "pending",   # inválido = pendente no Painel Admin
-                "last":      ref.sent_at,
-                "version":   "—",
-                "errors":    "—",
+                "name": s_rec.name, "code": s_rec.code,
+                "period": current_period or ref.period, "status": "pending",
+                "last": ref.sent_at, "version": "—", "errors": "—",
                 "upload_id": ref.upload_id,
             })
             continue
 
-        # ── 3. Sem dados no período → Pendente ────────────────────────────────────
         rows.append({
-            "name":      s_rec.name,
-            "code":      s_rec.code,
-            "period":    current_period or "—",
-            "status":    "pending",
-            "last":      "—",
-            "version":   "—",
-            "errors":    "—",
+            "name": s_rec.name, "code": s_rec.code, "period": current_period or "—",
+            "status": "pending", "last": "—", "version": "—", "errors": "—",
             "upload_id": None,
         })
 
@@ -419,12 +522,31 @@ def get_canceled_uploads_count(period: str) -> int:
     """
     Conta uploads válidos que foram cancelados no período informado.
 
-    Usa session_validated_forecasts (is_active=False) para identificar
-    quais upload_ids cobrem o período — mesmo que o campo 'period' em
-    session_uploads esteja em formato diferente de YYYY-MM.
+    Prioridade: Snowflake → fallback session_state.
 
     Retorna o número de upload_ids distintos cancelados no período.
     """
+    from services.snowflake_service import get_snowflake_session
+
+    # --- Tentar Snowflake ---
+    session = get_snowflake_session()
+    if session is not None:
+        try:
+            safe_period = period.replace("'", "''") if period else ""
+            df = session.sql(f"""
+                SELECT COUNT(DISTINCT UPLOAD_ID) AS CNT
+                FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+                WHERE STATUS = 'CANCELLED'
+                  AND REFERENCE_PERIOD = '{safe_period}'
+            """).to_pandas()
+            if df is not None and not df.empty:
+                return int(df.iloc[0]["CNT"])
+        except Exception as exc:
+            _upload_logger.warning(
+                "get_canceled_uploads_count: falha Snowflake, usando fallback. erro=%s", exc,
+            )
+
+    # --- Fallback: session_state ---
     import streamlit as st
     from utils.dates import to_period_ym
     from utils.session_state import get_all_session_uploads
@@ -438,7 +560,6 @@ def get_canceled_uploads_count(period: str) -> int:
     if not canceled_ids:
         return 0
 
-    # Localizar upload_ids cancelados com linhas no período (via forecast_period)
     all_forecasts = st.session_state.get("session_validated_forecasts", [])
     matched: set[str] = set()
     for f in all_forecasts:
@@ -448,6 +569,36 @@ def get_canceled_uploads_count(period: str) -> int:
                 matched.add(uid)
 
     return len(matched)
+
+
+def get_available_periods_from_snowflake() -> list[str]:
+    """
+    Retorna períodos distintos presentes em UPLOAD_BATCHES, ordenados DESC.
+    Exclui valores nulos ou '—'. Formato: YYYY-MM.
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    session = get_snowflake_session()
+    if session is None:
+        return []
+
+    try:
+        df = session.sql(f"""
+            SELECT DISTINCT REFERENCE_PERIOD
+            FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+            WHERE REFERENCE_PERIOD IS NOT NULL
+              AND REFERENCE_PERIOD != '—'
+              AND REFERENCE_PERIOD != ''
+            ORDER BY REFERENCE_PERIOD DESC
+        """).to_pandas()
+        if df is not None and not df.empty:
+            return df["REFERENCE_PERIOD"].tolist()
+    except Exception as exc:
+        _upload_logger.warning(
+            "get_available_periods_from_snowflake: falha. erro=%s", exc,
+        )
+
+    return []
 
 
 def can_cancel(record: UploadRecord) -> bool:
