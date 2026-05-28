@@ -652,15 +652,72 @@ def simulate_cancel(upload_id: str) -> str:
 def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
     """
     Retorna o detalhe completo de um upload pelo seu ID.
-    Verifica uploads de sessão antes dos dados mock.
-    Em produção, consultará a tabela CONTROL.upload_batches no Snowflake.
+    Prioridade: Snowflake CONTROL.UPLOAD_BATCHES → session_state → mock.
     """
+    from services.snowflake_service import get_snowflake_session
     from utils.session_state import get_session_upload_by_id
     import streamlit as st
+    import pandas as pd
 
-    # --- Uploads registrados na sessão atual ---
+    # --- 1. Fonte de verdade: Snowflake ---
+    session = get_snowflake_session()
+    if session is not None:
+        try:
+            safe_id = upload_id.replace("'", "''")
+            df = session.sql(f"""
+                SELECT UPLOAD_ID, SUPPLIER_ID, SUPPLIER_NAME, FILE_NAME,
+                       REPORT_TYPE, REFERENCE_PERIOD, VERSION, STATUS, IS_ACTIVE,
+                       UPLOADED_BY, UPLOADED_AT, TOTAL_ROWS, VALID_ROWS, INVALID_ROWS
+                FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+                WHERE UPLOAD_ID = '{safe_id}'
+            """).to_pandas()
+
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                raw_status = str(row["STATUS"]).lower()
+                if raw_status == "cancelled":
+                    raw_status = "canceled"
+
+                uploaded_at = row["UPLOADED_AT"]
+                try:
+                    ts = pd.Timestamp(uploaded_at)
+                    sent_at = ts.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    sent_at = str(uploaded_at)[:16] if uploaded_at else "—"
+
+                _upload_logger.info(
+                    "get_upload_detail: encontrado no Snowflake — upload_id=%s", upload_id,
+                )
+                return UploadDetail(
+                    upload_id=         str(row["UPLOAD_ID"]),
+                    supplier_name=     str(row["SUPPLIER_NAME"]),
+                    supplier_id=       str(row["SUPPLIER_ID"]),
+                    file_name=         str(row["FILE_NAME"]),
+                    report_type=       str(row["REPORT_TYPE"]),
+                    period=            str(row["REFERENCE_PERIOD"]),
+                    version=           int(row["VERSION"]),
+                    status=            raw_status,
+                    uploaded_by=       str(row["UPLOADED_BY"]) if row["UPLOADED_BY"] else "—",
+                    sent_at=           sent_at,
+                    total_rows=        int(row["TOTAL_ROWS"]),
+                    valid_rows=        int(row["VALID_ROWS"]),
+                    invalid_rows=      int(row["INVALID_ROWS"]),
+                    target_layer=      "TRUSTED.forecast_validated",
+                    is_active=         bool(row["IS_ACTIVE"]),
+                    timeline=          [],
+                    validation_checks= [],
+                )
+        except Exception as exc:
+            _upload_logger.warning(
+                "get_upload_detail: falha Snowflake, usando fallback. erro=%s", exc,
+            )
+
+    # --- 2. Fallback: uploads registrados na sessão atual ---
     session_rec = get_session_upload_by_id(upload_id)
     if session_rec is not None:
+        _upload_logger.info(
+            "get_upload_detail: fallback session_state — upload_id=%s", upload_id,
+        )
         return UploadDetail(
             upload_id=         session_rec["upload_id"],
             supplier_name=     session_rec.get("supplier_name", "—"),
@@ -670,8 +727,6 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
             period=            session_rec.get("period", "—"),
             version=           session_rec.get("version", 1),
             status=            session_rec.get("status", "—"),
-            # uploaded_by: e-mail salvo no momento do upload (e-mail do fornecedor).
-            # Não usar st.session_state["user_email"] pois muda conforme quem visualiza.
             uploaded_by=       session_rec.get("uploaded_by") or "—",
             sent_at=           session_rec.get("sent_at", "—"),
             total_rows=        session_rec.get("valid_rows", 0) + session_rec.get("invalid_rows", 0),
@@ -683,7 +738,7 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
             validation_checks= [],
         )
 
-    # --- Dados mock ---
+    # --- 3. Fallback: dados mock ---
     raw = get_mock_upload_by_id(upload_id)
     if raw is None:
         return None

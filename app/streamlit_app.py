@@ -22,7 +22,7 @@ from components.cards import metric_card, kpi_card, navy_card, render_cards_row
 from pages.supplier_upload import render as render_upload
 from pages.supplier_history import render as render_history
 from pages.supplier_errors import render as render_errors
-from services.upload_service import get_supplier_uploads
+from services.upload_service import get_supplier_uploads, get_supplier_upload_batches
 from pages.admin_suppliers import render as render_admin_suppliers
 from pages.validated_data import render as render_validated_data
 from pages.admin_upload_detail import render as render_upload_detail
@@ -214,13 +214,17 @@ _STATUS_LABEL: dict[str, str] = {
 
 
 def _render_supplier_home() -> None:
-    """Dashboard do fornecedor — resumo da sessão e ações rápidas."""
+    """Dashboard do fornecedor — resumo dos uploads (Snowflake como fonte principal)."""
 
     supplier_id   = st.session_state.get("supplier_id") or ""
     supplier_name = st.session_state.get("user_name", "Fornecedor")
 
-    # Somente uploads da sessão atual (sem dados mock)
-    session_recs = get_session_uploads(supplier_id)  # list[dict]
+    # Fonte de verdade: Snowflake. Fallback: session_state.
+    sf_recs = get_supplier_upload_batches(supplier_id)
+    if sf_recs:
+        recs = sf_recs
+    else:
+        recs = get_session_uploads(supplier_id)
 
     # Saudação
     st.markdown(
@@ -233,8 +237,8 @@ def _render_supplier_home() -> None:
         unsafe_allow_html=True,
     )
 
-    # Cards de resumo — baseados apenas em uploads desta sessão
-    if not session_recs:
+    # Cards de resumo
+    if not recs:
         render_cards_row([
             metric_card("Último Envio",       "Sem envio"),
             metric_card("Status Atual",       "Pendente"),
@@ -256,8 +260,8 @@ def _render_supplier_home() -> None:
             unsafe_allow_html=True,
         )
     else:
-        latest = session_recs[0]   # dict, mais recente primeiro
-        active = next((r for r in session_recs if r.get("is_active")), None)
+        latest = recs[0]   # dict, mais recente primeiro
+        active = next((r for r in recs if r.get("is_active")), None)
 
         status_label = _STATUS_LABEL.get(latest.get("status", ""), latest.get("status", "—"))
         versao_label = f"v.{active['version']}" if active else "—"
