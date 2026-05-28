@@ -327,8 +327,8 @@ def _render_actions(detail: UploadDetail) -> None:
     - Voltar: navega para a origem.
     - Baixar relatório: download do resumo em CSV.
     """
-    from services.upload_service import can_cancel, UploadRecord
-    from utils.session_state import cancel_upload
+    from services.upload_service import can_cancel, UploadRecord, persist_cancel_upload
+    from utils.session_state import deactivate_validated_forecast
 
     role = st.session_state.get("role", "admin")
 
@@ -394,8 +394,20 @@ def _render_actions(detail: UploadDetail) -> None:
                 use_container_width=True,
             ):
                 user_email = st.session_state.get("user_email", "—")
-                cancel_upload(detail.upload_id, cancelled_by=user_email)
-                st.session_state.just_cancelled_upload_id = detail.upload_id
+                supplier_id = st.session_state.get("supplier_id") or detail.supplier_id
+                success = persist_cancel_upload(
+                    upload_id=detail.upload_id,
+                    supplier_id=supplier_id,
+                    cancelled_by=user_email,
+                )
+                if success:
+                    deactivate_validated_forecast(detail.upload_id)
+                    st.session_state.just_cancelled_upload_id = detail.upload_id
+                else:
+                    st.error(
+                        "Falha ao cancelar o envio no Snowflake. "
+                        "Verifique se o envio ainda está ativo e tente novamente."
+                    )
                 fallback = "history" if role == "supplier" else "admin_dashboard"
                 st.session_state.page = get_origin_page(fallback=fallback)
                 safe_rerun()

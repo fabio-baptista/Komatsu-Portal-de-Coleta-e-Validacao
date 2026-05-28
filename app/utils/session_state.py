@@ -235,7 +235,9 @@ def register_upload(
     uploaded_by:  str = "",
 ) -> str:
     """
-    Registra um novo upload no session_state e retorna o upload_id gerado.
+    [TEMPORÁRIO] Registra upload em session_state para feedback imediato na UI.
+    Fonte de verdade: CONTROL.UPLOAD_BATCHES via persist_upload_batch().
+    Mantido apenas para compatibilidade de ID-remap e tela home do fornecedor.
 
     Regra de versionamento:
     - Chave: supplier_id + report_type + reference_period
@@ -364,6 +366,10 @@ def cancel_upload(
     cancel_reason: str = "",
 ) -> bool:
     """
+    [DEPRECADO] Cancelamento em session_state apenas.
+    Fonte de verdade: persist_cancel_upload() em upload_service.py.
+    Mantido apenas como fallback para mock data (DEMO_MODE=True).
+
     Cancela logicamente um upload sem excluir nenhum registro.
 
     Regras:
@@ -475,7 +481,9 @@ def reset_local_data() -> None:
 
 def register_validated_forecast(upload_id: str, staging_df) -> None:
     """
-    Persiste as linhas normalizadas de um upload válido em session_validated_forecasts.
+    [TEMPORÁRIO] Salva forecasts na sessão como fallback para validated_data.py.
+    Fonte de verdade: TRUSTED.FORECAST_VALIDATED via persist_validated_forecast().
+    Mantido para fallback caso Snowflake não retorne dados na mesma sessão.
 
     - Marca is_active=False nas linhas de outros uploads da mesma
       (supplier_id, forecast_period) — equivalente ao versionamento de uploads.

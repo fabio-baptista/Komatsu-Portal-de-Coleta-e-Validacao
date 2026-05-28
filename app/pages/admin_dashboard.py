@@ -171,11 +171,11 @@ def _render_kpi_cards(rows: list[dict], period_lbl: str, canceled_count: int = 0
     4 cards KPI orientados à coleta de forecast.
 
     Regra de negócio:
-      Participantes   = fornecedores ativos na coleta do período
-      Válidos         = com forecast válido ativo (is_active=True em session_validated_forecasts)
+      Participantes   = fornecedores ativos na coleta do período (CONTROL.SUPPLIERS)
+      Válidos         = com upload VALID e IS_ACTIVE=TRUE no período (CONTROL.UPLOAD_BATCHES)
       Pendentes       = sem forecast válido ativo (inclui sem envio, com inválido e cancelados
                         que não reenviaram)
-      Cancelados      = uploads válidos cancelados no período (histórico de evento)
+      Cancelados      = uploads STATUS=CANCELLED no período (CONTROL.UPLOAD_BATCHES)
     """
     participantes = len(rows)
     validos       = sum(1 for r in rows if r["status"] == "valid")

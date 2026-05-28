@@ -19,7 +19,6 @@ from utils.streamlit_compat import safe_rerun
 from components.layout import load_css, render_header, render_footer
 from components.navigation import render_sidebar
 from components.cards import metric_card, kpi_card, navy_card, render_cards_row
-from components.tables import demo_history_table, demo_admin_table
 from pages.supplier_upload import render as render_upload
 from pages.supplier_history import render as render_history
 from pages.supplier_errors import render as render_errors
