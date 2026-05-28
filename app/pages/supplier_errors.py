@@ -12,10 +12,14 @@ import streamlit as st
 from components.badges import status_badge
 from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
+from services.upload_service import get_validation_errors
 from utils.session_state import get_origin_page, get_session_errors
 from utils.file_reader import build_error_report
+from utils.logger import get_logger
 from services.mock_data_service import get_mock_validation_errors, get_mock_upload_by_id
 from utils.streamlit_compat import safe_rerun
+
+_logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Resolução dinâmica do contexto (upload_id vem do session_state)
@@ -60,14 +64,42 @@ def _get_upload_context(upload_id: str) -> dict:
 def _get_errors_df(upload_id: str) -> pd.DataFrame:
     """
     Retorna DataFrame de erros para o upload_id informado.
-    Prioridade: erros da sessão > dados mockados.
+    Prioridade: Snowflake (fonte de verdade) > session_state (fallback) > mock.
     """
-    # Verificar erros registrados na sessão (upload real)
+    # 1. Fonte de verdade: Snowflake CONTROL.VALIDATION_ERRORS
+    sf_errors = get_validation_errors(upload_id)
+    if sf_errors:
+        _logger.info(
+            "Erros carregados do Snowflake: upload_id=%s, total=%d",
+            upload_id, len(sf_errors),
+        )
+        return pd.DataFrame(sf_errors)
+
+    # 2. Fallback temporário: session_state (para uploads da sessão atual
+    #    caso Snowflake não retorne — ex: gravação falhou parcialmente)
     session_errs = get_session_errors(upload_id)
     if session_errs is not None:
+        _logger.warning(
+            "Fallback para session_state: upload_id=%s, total=%d. "
+            "Erros não encontrados no Snowflake.",
+            upload_id, len(session_errs),
+        )
         return pd.DataFrame(session_errs)
-    # Fallback para dados mock
-    return pd.DataFrame(get_mock_validation_errors(upload_id))
+
+    # 3. Fallback para dados mock (modo demo)
+    mock_errs = get_mock_validation_errors(upload_id)
+    if mock_errs:
+        _logger.info(
+            "Erros carregados do mock: upload_id=%s, total=%d",
+            upload_id, len(mock_errs),
+        )
+        return pd.DataFrame(mock_errs)
+
+    # 4. Nenhum erro encontrado em nenhuma fonte
+    _logger.info(
+        "Nenhum erro encontrado para upload_id=%s", upload_id,
+    )
+    return pd.DataFrame()
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +319,27 @@ def render() -> None:
     n_errors  = len(errors_df)
 
     _render_upload_context(ctx, n_errors)
+
+    # Nenhum erro encontrado para este upload
+    if n_errors == 0:
+        st.markdown(
+            """
+            <div class="kmt-alert kmt-alert--info" style="margin-top:24px;">
+                <div class="kmt-alert-icon">ℹ</div>
+                <div>
+                    <p class="kmt-alert-title">Nenhum erro encontrado para este envio</p>
+                    <p class="kmt-alert-body">
+                        Não há erros de validação registrados para este arquivo.
+                        Caso tenha enviado um novo arquivo corrigido, os erros do envio anterior
+                        não se aplicam mais.
+                    </p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
     _render_error_alert()
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
