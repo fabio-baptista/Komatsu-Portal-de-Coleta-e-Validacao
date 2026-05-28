@@ -10,10 +10,13 @@ import streamlit as st
 
 from components.badges import status_badge, version_badge
 from components.cards import metric_card, render_cards_row
-from services.upload_service import UploadRecord, can_cancel, get_supplier_uploads
+from services.upload_service import UploadRecord, can_cancel, get_supplier_uploads, persist_cancel_upload
 from services.mock_data_service import get_current_open_window
-from utils.session_state import navigate_to, cancel_upload
+from utils.session_state import navigate_to, deactivate_validated_forecast
+from utils.logger import get_logger
 from utils.streamlit_compat import safe_rerun
+
+_logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -216,11 +219,28 @@ def _render_cancel_section(records: list[UploadRecord]) -> None:
                 key=f"btn_cancel_{record.upload_id}",
                 use_container_width=True,
             ):
-                cancel_upload(
-                    upload_id=    record.upload_id,
-                    cancelled_by= user_email,
+                supplier_id = st.session_state.get("supplier_id") or ""
+                success = persist_cancel_upload(
+                    upload_id=record.upload_id,
+                    supplier_id=supplier_id,
+                    cancelled_by=user_email,
                 )
-                st.session_state.just_cancelled_upload_id = record.upload_id
+                if success:
+                    _logger.info(
+                        "Upload cancelado com sucesso: upload_id=%s, by=%s",
+                        record.upload_id, user_email,
+                    )
+                    # Desativar forecasts validados na sessão (temporário)
+                    deactivate_validated_forecast(record.upload_id)
+                    st.session_state.just_cancelled_upload_id = record.upload_id
+                else:
+                    _logger.error(
+                        "Falha ao cancelar upload: upload_id=%s", record.upload_id,
+                    )
+                    st.error(
+                        "Falha ao cancelar o envio no Snowflake. "
+                        "Verifique se o envio ainda está ativo e tente novamente."
+                    )
                 safe_rerun()
 
     st.markdown(

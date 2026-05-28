@@ -945,3 +945,153 @@ def get_supplier_upload_batches(supplier_id: str) -> list[dict]:
         len(results), supplier_id,
     )
     return results
+
+
+# ---------------------------------------------------------------------------
+# Cancelamento persistido — CONTROL.UPLOAD_BATCHES
+# ---------------------------------------------------------------------------
+
+def persist_cancel_upload(
+    upload_id: str,
+    supplier_id: str,
+    cancelled_by: str = "",
+    cancel_reason: str = "",
+) -> bool:
+    """
+    Cancela logicamente um upload em CONTROL.UPLOAD_BATCHES.
+
+    Validações (via WHERE):
+      - Upload existe com UPLOAD_ID informado
+      - Pertence ao SUPPLIER_ID informado
+      - STATUS = 'VALID' e IS_ACTIVE = TRUE
+
+    UPDATE aplicado:
+      - STATUS = 'CANCELLED'
+      - IS_ACTIVE = FALSE
+      - CANCELLED_AT = CURRENT_TIMESTAMP()
+      - CANCELLED_BY = cancelled_by
+      - CANCELLATION_REASON = cancel_reason
+
+    Retorna True se o cancelamento foi persistido, False caso contrário.
+    """
+    from services.snowflake_service import get_snowflake_session
+
+    _upload_logger.info(
+        "persist_cancel_upload: início — upload_id=%s, supplier_id=%s, by=%s",
+        upload_id, supplier_id, cancelled_by,
+    )
+
+    session = get_snowflake_session()
+    if session is None:
+        _upload_logger.error(
+            "persist_cancel_upload: sessão Snowflake indisponível."
+        )
+        return False
+
+    safe_upload_id = upload_id.replace("'", "''")
+    safe_supplier_id = supplier_id.replace("'", "''").upper()
+    safe_by = cancelled_by.replace("'", "''") if cancelled_by else ""
+    safe_reason = cancel_reason.replace("'", "''") if cancel_reason else ""
+
+    # Pré-verificação: upload deve existir, pertencer ao supplier, ser VALID e ACTIVE
+    try:
+        pre_df = session.sql(f"""
+            SELECT STATUS, IS_ACTIVE
+            FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+            WHERE UPLOAD_ID = '{safe_upload_id}'
+              AND SUPPLIER_ID = '{safe_supplier_id}'
+        """).to_pandas()
+
+        if pre_df is None or pre_df.empty:
+            _upload_logger.error(
+                "persist_cancel_upload: upload_id=%s não encontrado para supplier_id=%s.",
+                upload_id, supplier_id,
+            )
+            return False
+
+        current_status = str(pre_df.iloc[0]["STATUS"])
+        current_active = bool(pre_df.iloc[0]["IS_ACTIVE"])
+
+        if current_status != "VALID" or not current_active:
+            _upload_logger.error(
+                "persist_cancel_upload: upload não é cancelável. "
+                "status=%s, is_active=%s (requer VALID + TRUE).",
+                current_status, current_active,
+            )
+            return False
+
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_cancel_upload: falha na pré-verificação.\n"
+            "  upload_id: %s\n"
+            "  erro: %s",
+            upload_id, exc,
+        )
+        return False
+
+    update_sql = f"""
+        UPDATE {_DATABASE}.CONTROL.UPLOAD_BATCHES
+        SET STATUS = 'CANCELLED',
+            IS_ACTIVE = FALSE,
+            CANCELLED_AT = CURRENT_TIMESTAMP(),
+            CANCELLED_BY = '{safe_by}',
+            CANCELLATION_REASON = '{safe_reason}'
+        WHERE UPLOAD_ID = '{safe_upload_id}'
+          AND SUPPLIER_ID = '{safe_supplier_id}'
+          AND STATUS = 'VALID'
+          AND IS_ACTIVE = TRUE
+    """
+
+    try:
+        session.sql(update_sql).collect()
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_cancel_upload: UPDATE falhou.\n"
+            "  upload_id: %s\n"
+            "  erro: %s\n"
+            "  tipo: %s",
+            upload_id, exc, type(exc).__name__,
+        )
+        return False
+
+    # Verificar se o UPDATE realmente alterou o registro
+    try:
+        check_df = session.sql(f"""
+            SELECT STATUS, IS_ACTIVE
+            FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+            WHERE UPLOAD_ID = '{safe_upload_id}'
+        """).to_pandas()
+
+        if check_df is None or check_df.empty:
+            _upload_logger.error(
+                "persist_cancel_upload: upload_id=%s não encontrado após UPDATE.",
+                upload_id,
+            )
+            return False
+
+        new_status = str(check_df.iloc[0]["STATUS"])
+        new_active = bool(check_df.iloc[0]["IS_ACTIVE"])
+
+        if new_status != "CANCELLED" or new_active is True:
+            _upload_logger.error(
+                "persist_cancel_upload: UPDATE não surtiu efeito. "
+                "status=%s, is_active=%s. "
+                "Possível causa: upload não era VALID/ACTIVE ou não pertence ao supplier.",
+                new_status, new_active,
+            )
+            return False
+
+    except Exception as exc:
+        _upload_logger.error(
+            "persist_cancel_upload: falha na verificação pós-UPDATE.\n"
+            "  upload_id: %s\n"
+            "  erro: %s",
+            upload_id, exc,
+        )
+        return False
+
+    _upload_logger.info(
+        "persist_cancel_upload: sucesso — upload_id=%s cancelado por '%s'.",
+        upload_id, cancelled_by,
+    )
+    return True
