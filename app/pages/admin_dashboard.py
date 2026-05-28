@@ -16,6 +16,7 @@ from services.mock_data_service import get_current_open_window
 from services.supplier_service import get_all_suppliers
 from services.upload_service import get_admin_status_rows, get_all_uploads, get_canceled_uploads_count
 from utils.session_state import navigate_to
+from utils.streamlit_compat import safe_rerun
 
 
 # ---------------------------------------------------------------------------
@@ -142,19 +143,17 @@ def _render_filters(periods: list[str]) -> tuple[str, list[str], list[str]]:
 
     with col2:
         selected_suppliers = st.multiselect(
-            "Fornecedor",
+            "Todos os fornecedores",
             options=supplier_names,
             default=[],
-            placeholder="Todos os fornecedores",
             key="adm_filter_supplier",
         )
 
     with col3:
         selected_statuses = st.multiselect(
-            "Status da Coleta",
+            "Todos os status",
             options=status_options,
             default=[],
-            placeholder="Todos os status",
             key="adm_filter_status",
         )
 
@@ -321,7 +320,7 @@ def _render_quick_nav() -> None:
             use_container_width=True,
         ):
             navigate_to("admin_suppliers", origin="admin_dashboard")
-            st.rerun()
+            safe_rerun()
 
     with col2:
         if st.button(
@@ -330,7 +329,7 @@ def _render_quick_nav() -> None:
             use_container_width=True,
         ):
             navigate_to("validated_data", origin="admin_dashboard")
-            st.rerun()
+            safe_rerun()
 
 
 def _render_action_buttons(rows: list[dict]) -> None:
@@ -390,7 +389,7 @@ def _render_action_buttons(rows: list[dict]) -> None:
                         upload_id=row["upload_id"],
                         origin="admin_dashboard",
                     )
-                    st.rerun()
+                    safe_rerun()
             else:
                 if st.button(
                     "Ver detalhe",
@@ -402,7 +401,7 @@ def _render_action_buttons(rows: list[dict]) -> None:
                         upload_id=row["upload_id"],
                         origin="admin_dashboard",
                     )
-                    st.rerun()
+                    safe_rerun()
 
 
 # ---------------------------------------------------------------------------

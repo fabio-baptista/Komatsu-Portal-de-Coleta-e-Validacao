@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
 
+from utils.streamlit_compat import safe_rerun
 from components.layout import load_css, render_header, render_footer
 from components.navigation import render_sidebar
 from components.cards import metric_card, kpi_card, navy_card, render_cards_row
@@ -28,7 +29,7 @@ from pages.validated_data import render as render_validated_data
 from pages.admin_upload_detail import render as render_upload_detail
 from pages.admin_dashboard import render as render_admin_dashboard
 from utils.session_state import init_state as _init_session, get_session_uploads
-from services.mock_data_service import get_current_mock_user
+from services.auth_service import do_admin_login
 
 # --- Configuração da página (deve ser o primeiro comando Streamlit) ----------
 st.set_page_config(
@@ -45,26 +46,25 @@ def _init_state() -> None:
 
 
 def _do_login(role: str) -> None:
-    """Login administrativo — sem seleção de fornecedor."""
-    from services.mock_data_service import get_current_mock_user
-    user = get_current_mock_user(role)
-    st.session_state.logged_in     = True
-    st.session_state.role          = role
-    st.session_state.page          = "home"
-    st.session_state.user_name     = user["name"]
-    st.session_state.user_email    = user["email"]
-    st.session_state.user_initials = user["initials"]
-    st.session_state.supplier_id   = user.get("supplier_id") or ""
-    st.session_state.supplier_email= None
-    st.session_state.login_mode    = None
-    # Limpa apenas estados temporários de navegação (dados funcionais persistem)
-    st.session_state.selected_upload_id     = None
-    st.session_state.detail_upload_id       = None
-    st.session_state.errors_upload_id       = None
-    st.session_state.selected_supplier_code = None
-    st.session_state.origin_page            = None
-    st.session_state.suppliers_form_mode    = None
-    st.session_state.suppliers_edit_code    = None
+    """Login administrativo — usa auth_service para buscar dados do admin."""
+    result = do_admin_login()
+    if result.get("success"):
+        st.session_state.login_mode = None
+        st.session_state.selected_upload_id     = None
+        st.session_state.detail_upload_id       = None
+        st.session_state.errors_upload_id       = None
+        st.session_state.selected_supplier_code = None
+        st.session_state.origin_page            = None
+        st.session_state.suppliers_form_mode    = None
+        st.session_state.suppliers_edit_code    = None
+    else:
+        st.session_state.logged_in = True
+        st.session_state.role = "admin"
+        st.session_state.page = "admin_dashboard"
+        st.session_state.user_name = "Administrador"
+        st.session_state.user_email = "admin@komatsu.com.br"
+        st.session_state.user_initials = "AP"
+        st.session_state.login_mode = None
 
 
 def _do_supplier_login(supplier) -> None:
@@ -96,7 +96,8 @@ def _do_supplier_login(supplier) -> None:
 def _render_login() -> None:
     """Tela de login centralizada com cartão Komatsu."""
     if st.session_state.pop("_show_clear_msg", False):
-        st.success("Dados locais limpos com sucesso.")
+        summary = st.session_state.pop("_clear_summary", "Dados limpos com sucesso.")
+        st.success(summary)
 
     _, col, _ = st.columns([1, 1.6, 1])
     with col:
@@ -135,19 +136,13 @@ def _render_login() -> None:
             st.markdown('<div class="kmt-btn-yellow">', unsafe_allow_html=True)
             if st.button("Entrar", key="login_supplier_confirm",
                          use_container_width=True):
-                from services.supplier_service import get_all_suppliers
+                from services.supplier_service import get_supplier_by_email
                 email_clean = email_typed.strip().lower()
 
                 if not email_clean:
                     st.error("Digite o e-mail para continuar.")
                 else:
-                    # Busca case-insensitive em todos os fornecedores
-                    all_s    = get_all_suppliers()
-                    supplier = next(
-                        (s for s in all_s
-                         if s.email.strip().lower() == email_clean),
-                        None,
-                    )
+                    supplier = get_supplier_by_email(email_clean)
                     if supplier is None:
                         st.error(
                             "E-mail não cadastrado. "
@@ -161,13 +156,13 @@ def _render_login() -> None:
                         )
                     else:
                         _do_supplier_login(supplier)
-                        st.rerun()
+                        safe_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
             if st.button("← Voltar", key="login_back", use_container_width=True):
                 st.session_state.login_mode = None
-                st.rerun()
+                safe_rerun()
 
         else:
             # ── Etapa 1: seleção de perfil ─────────────────────────────────────
@@ -181,7 +176,7 @@ def _render_login() -> None:
             if st.button("Entrar como Fornecedor", key="login_supplier",
                          use_container_width=True):
                 st.session_state.login_mode = "supplier"
-                st.rerun()
+                safe_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
@@ -191,7 +186,7 @@ def _render_login() -> None:
             if st.button("Acesso Administrativo", key="login_admin",
                          use_container_width=True):
                 _do_login("admin")
-                st.rerun()
+                safe_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)  # kmt-login-body
@@ -292,15 +287,15 @@ def _render_supplier_home() -> None:
         with btn1:
             if st.button("📤  Enviar Arquivo", key="home_btn_upload", use_container_width=True):
                 st.session_state.page = "upload"
-                st.rerun()
+                safe_rerun()
         with btn2:
             if st.button("Ir para Templates e Envio", key="home_btn_template", use_container_width=True):
                 st.session_state.page = "upload"
-                st.rerun()
+                safe_rerun()
         with btn3:
             if st.button("📋  Ver Meus Envios", key="home_btn_history", use_container_width=True):
                 st.session_state.page = "history"
-                st.rerun()
+                safe_rerun()
 
     with col_side:
         st.markdown(
@@ -365,24 +360,62 @@ def main() -> None:
             role=st.session_state.role,
             current_page=st.session_state.page,
         )
-        # ── Ferramenta de reset (visível apenas para admin) ────────────────────
-        if st.session_state.get("role") == "admin":
+        # ── Ferramenta de reset (visível apenas para admin em ambiente dev/test) ──
+        from utils.constants import APP_ENV
+        if st.session_state.get("role") == "admin" and APP_ENV in ("dev", "test", "local"):
             st.markdown("---")
             st.markdown(
                 '<p style="font-size:10px;font-weight:700;text-transform:uppercase;'
                 'letter-spacing:.06em;color:#9CA3AF;margin:0 0 6px;">Dev / Teste</p>',
                 unsafe_allow_html=True,
             )
+
+            confirm_clear = st.checkbox(
+                "Confirmo que quero apagar dados de teste",
+                key="chk_confirm_clear",
+                value=False,
+            )
+
             if st.button(
-                "🗑  Limpar dados",
+                "🗑  Limpar dados de teste",
                 key="btn_reset_local",
                 use_container_width=True,
-                help="Limpa fornecedores, uploads e estado de sessão para teste do zero.",
+                help="Remove dados criados em teste do Snowflake e limpa session_state.",
+                disabled=not confirm_clear,
             ):
+                from services.dev_tools_service import clear_dev_data
                 from utils.session_state import reset_local_data
+
+                # Limpar Snowflake
+                cleanup_result = clear_dev_data()
+
+                # Limpar session_state
                 reset_local_data()
+
+                # Exibir resumo
+                if cleanup_result["success"]:
+                    deleted = cleanup_result["deleted"]
+                    summary_lines = [
+                        f"- **{table}**: {count} removidos"
+                        for table, count in deleted.items()
+                        if isinstance(count, int) and count > 0
+                    ]
+                    if summary_lines:
+                        st.session_state["_clear_summary"] = (
+                            "Dados de teste removidos:\n\n" + "\n".join(summary_lines)
+                        )
+                    else:
+                        st.session_state["_clear_summary"] = (
+                            "Nenhum dado de teste encontrado para remover."
+                        )
+                else:
+                    errors = cleanup_result["errors"]
+                    st.session_state["_clear_summary"] = (
+                        "Limpeza com erros:\n\n" + "\n".join(f"- {e}" for e in errors)
+                    )
+
                 st.session_state["_show_clear_msg"] = True
-                st.rerun()
+                safe_rerun()
 
     page = st.session_state.page
     title = _PAGE_TITLES.get(page, "Portal Komatsu")
@@ -412,7 +445,7 @@ def main() -> None:
     # Redirecionamento: admin vai direto ao painel
     elif page == "home" and role == "admin":
         st.session_state.page = "admin_dashboard"
-        st.rerun()
+        safe_rerun()
 
     # Páginas exclusivas de admin
     elif page == "admin_dashboard" and role == "admin":
@@ -453,7 +486,7 @@ def main() -> None:
     # Acesso não autorizado — admin tentando acessar página de fornecedor
     else:
         st.session_state.page = "admin_dashboard"
-        st.rerun()
+        safe_rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 

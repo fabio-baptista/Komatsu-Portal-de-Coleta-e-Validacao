@@ -17,6 +17,7 @@ from services.validation_service import ValidationResult, validate_forecast
 from services.forecast_service import NormalizationResult, normalize_forecast
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
 from utils.session_state import register_upload, register_validated_forecast
+from utils.streamlit_compat import safe_rerun
 
 # Caminhos oficiais dos templates
 _TEMPLATE_PATH      = Path(__file__).parent.parent / "templates" / "template_forecast.xlsx"
@@ -244,7 +245,7 @@ def _render_file_ready_prompt(file_name: str, n_rows: int) -> None:
     with col_btn:
         if st.button("✔  Validar arquivo", key="btn_validate", use_container_width=True):
             st.session_state.upload_validate_pending = True
-            st.rerun()
+            safe_rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +287,7 @@ def _render_success_supplier(result: ValidationResult) -> None:
     with col_hist:
         if st.button("📋  Ver Meus Envios", key="success_btn_history", use_container_width=True):
             st.session_state.page = "history"
-            st.rerun()
+            safe_rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +344,7 @@ def _render_errors_supplier(result: ValidationResult, file_name: str) -> None:
     with col_hist:
         if st.button("📋  Ver Meus Envios", key="error_btn_history", use_container_width=True):
             st.session_state.page = "history"
-            st.rerun()
+            safe_rerun()
 
 
 # ---------------------------------------------------------------------------

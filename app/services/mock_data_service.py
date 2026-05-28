@@ -372,7 +372,26 @@ def get_mock_submission_windows() -> list[dict]:
 
 
 def get_current_open_window() -> Optional[dict]:
-    """Retorna a janela de envio aberta, ou None se nenhuma estiver aberta."""
+    """Retorna a janela aberta. Usa CONTROL.SUBMISSION_WINDOWS se disponivel, senao mock."""
+    try:
+        from services.snowflake_service import execute_query, is_running_in_snowflake
+        if is_running_in_snowflake():
+            df = execute_query(
+                "SELECT * FROM KBI_DATA_JOURNEY_DEV_DB.CONTROL.SUBMISSION_WINDOWS WHERE IS_OPEN = TRUE LIMIT 1"
+            )
+            if df is not None and not df.empty:
+                row = df.iloc[0].to_dict()
+                return {
+                    "window_id":  str(row["WINDOW_ID"]),
+                    "period":     str(row["REFERENCE_PERIOD"]),
+                    "label":      f"{str(row['REPORT_TYPE'])} — {str(row['REFERENCE_PERIOD'])}",
+                    "start_date": str(row["START_DATE"]),
+                    "end_date":   str(row["END_DATE"]),
+                    "is_open":    True,
+                }
+            return None
+    except Exception:
+        pass
     for w in _SUBMISSION_WINDOWS:
         if w["open"]:
             return w

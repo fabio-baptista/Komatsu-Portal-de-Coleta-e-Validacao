@@ -13,6 +13,7 @@ from components.badges import status_badge, version_badge
 from components.cards import metric_card, render_cards_row
 from services.upload_service import UploadDetail, get_upload_detail
 from utils.session_state import get_origin_page
+from utils.streamlit_compat import safe_rerun
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +369,7 @@ def _render_actions(detail: UploadDetail) -> None:
         back_label = back_labels.get(back_page, "← Voltar")
         if st.button(back_label, key="btn_back_history", use_container_width=True):
             st.session_state.page = back_page
-            st.rerun()
+            safe_rerun()
 
     with col_download:
         report_text = (
@@ -397,7 +398,7 @@ def _render_actions(detail: UploadDetail) -> None:
                 st.session_state.just_cancelled_upload_id = detail.upload_id
                 fallback = "history" if role == "supplier" else "admin_dashboard"
                 st.session_state.page = get_origin_page(fallback=fallback)
-                st.rerun()
+                safe_rerun()
 
 
 def _render_disclaimer() -> None:
@@ -454,12 +455,12 @@ def render() -> None:
                 if st.button("← Voltar para Meus Envios", key="btn_back_no_id",
                              use_container_width=True):
                     st.session_state.page = "history"
-                    st.rerun()
+                    safe_rerun()
             else:
                 if st.button("← Voltar ao Painel", key="btn_back_no_id",
                              use_container_width=True):
                     st.session_state.page = "admin_dashboard"
-                    st.rerun()
+                    safe_rerun()
         return
 
     detail = get_upload_detail(upload_id)
@@ -488,12 +489,12 @@ def render() -> None:
                 if st.button("← Voltar para Meus Envios", key="btn_back_not_found",
                              use_container_width=True):
                     st.session_state.page = "history"
-                    st.rerun()
+                    safe_rerun()
             else:
                 if st.button("← Voltar ao Painel", key="btn_back_not_found",
                              use_container_width=True):
                     st.session_state.page = "admin_dashboard"
-                    st.rerun()
+                    safe_rerun()
         return
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)

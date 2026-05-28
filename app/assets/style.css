@@ -27,12 +27,24 @@
 }
 
 /* --- Reset Streamlit Chrome --------------------------------- */
-/* Ocultar header nativo */
+/* Ocultar navegação nativa automática do Streamlit (multi-page) — sem reserva de espaço */
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavContainer"] {
+  display: none !important;
+  height: 0 !important;
+}
+/* Ocultar header nativo — sem reserva de espaço */
 header[data-testid="stHeader"] {
   display: none !important;
+  height: 0 !important;
 }
-/* Ocultar botão de colapso da sidebar */
-[data-testid="collapsedControl"] {
+/* Ocultar botão nativo de colapso e expand da sidebar.
+   Motivo: min-width/width 240px !important impede o colapso nativo de funcionar
+   corretamente — o botão de expandir fica inacessível após colapsar.
+   Solução futura: toggle customizado em navigation.py. */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
   display: none !important;
 }
 /* Ocultar toolbar flutuante */
@@ -43,8 +55,10 @@ header[data-testid="stHeader"] {
 footer {
   display: none !important;
 }
-/* Remover padding topo do bloco principal */
-.main .block-container {
+/* Remover padding topo do bloco principal — compatível com Streamlit 1.32+ */
+.main .block-container,
+.stMain .block-container,
+.stMainBlockContainer {
   padding-top: 0 !important;
   padding-bottom: 0 !important;
   max-width: 100% !important;
@@ -56,6 +70,12 @@ footer {
 
 /* --- Sidebar ----------------------------------------------- */
 section[data-testid="stSidebar"] {
+  top: 0 !important;
+  left: 0 !important;
+  transform: none !important;       /* Cancela translateX(-100%) do colapso nativo */
+  margin-left: 0 !important;
+  visibility: visible !important;
+  display: block !important;
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   max-width: var(--sidebar-w) !important;
@@ -66,20 +86,14 @@ section[data-testid="stSidebar"] > div:first-child {
   padding: 0 !important;
   overflow-x: hidden;
 }
+/* Remover padding-top dos contêineres internos do Streamlit 1.32+ */
+[data-testid="stSidebarContent"],
+[data-testid="stSidebarUserContent"] {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
 
-/* Bloco logo sidebar */
-.kmt-sidebar-logo {
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
-  padding: 20px 24px;
-}
-.kmt-sidebar-logo .kmt-logo {
-  font-family: 'Outfit', sans-serif;
-  font-weight: 900;
-  font-size: 26px;
-  letter-spacing: -0.04em;
-  color: var(--yellow);
-  display: block;
-}
+/* Bloco logo sidebar removido — marca KOMATSU exibida apenas no header principal */
 
 /* Seção de navegação */
 .kmt-sidebar-nav {

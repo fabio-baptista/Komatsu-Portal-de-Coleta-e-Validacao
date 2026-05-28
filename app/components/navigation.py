@@ -9,6 +9,7 @@ Monta o menu de navegação de acordo com o perfil do usuário logado
 import streamlit as st
 
 from utils.session_state import clear_selection
+from utils.streamlit_compat import safe_rerun
 
 # Menus por perfil
 _SUPPLIER_MENU = [
@@ -26,19 +27,10 @@ _ADMIN_MENU = [
 
 def render_sidebar(role: str, current_page: str) -> None:
     """
-    Renderiza a sidebar completa: logo, menu por perfil, widget de janela e logout.
+    Renderiza a sidebar completa: menu por perfil, widget de janela e logout.
     Deve ser chamado dentro de `with st.sidebar:`.
+    A marca KOMATSU é exibida apenas no header principal da página (render_header).
     """
-    # --- Bloco logo ---
-    st.markdown(
-        """
-        <div class="kmt-sidebar-logo">
-            <span class="kmt-logo">KOMATSU</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     # --- Label de seção ---
     section_label = "Fornecedor" if role == "supplier" else "Administrativo"
     st.markdown(
@@ -60,7 +52,7 @@ def render_sidebar(role: str, current_page: str) -> None:
             use_container_width=True,
         ):
             st.session_state.page = item["page"]
-            st.rerun()
+            safe_rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     # --- Widget janela do ciclo (dinâmico — sem dados hardcoded) ---
@@ -104,5 +96,5 @@ def render_sidebar(role: str, current_page: str) -> None:
         st.session_state.user_name = ""
         st.session_state.user_email = ""
         st.session_state.user_initials = ""
-        st.rerun()
+        safe_rerun()
     st.markdown("</div>", unsafe_allow_html=True)

@@ -1,158 +1,198 @@
 """
 supplier_service.py
 
-Serviço de dados de fornecedores.
-Responsável por retornar a lista de fornecedores, seus dados cadastrais
-e o status de envio por ciclo.
-
-Camadas de dados (prioridade decrescente):
-1. Fornecedores criados na sessão  (session_new_suppliers)
-2. Overrides de sessão sobre mock  (session_suppliers)
-3. Mock base                       (mock_data_service)
-
-NOTA: Em produção, substituir pela consulta ao cadastro corporativo.
+Servico de dados de fornecedores.
+Le e grava fornecedores na tabela CONTROL.SUPPLIERS via Snowflake.
 """
 
+import logging
 from dataclasses import dataclass, field
+from typing import Optional
 
-from services.mock_data_service import get_mock_suppliers, get_mock_supplier_by_code
+from services.snowflake_service import execute_query, get_snowflake_session
 
+logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tipo de dados
-# ---------------------------------------------------------------------------
+DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
+
 
 @dataclass
 class SupplierRecord:
-    """
-    Representa um fornecedor cadastrado no portal.
-
-    Nota de produção:
-    - O campo 'email' será usado como identificador de login futuro.
-    - Fornecedores NÃO devem ser excluídos fisicamente, pois podem ter histórico
-      de uploads, versões, erros e forecasts. Para remover da operação, usar
-      status Inativo.
-    - Em produção, persistir em CONTROL.suppliers ou tabela equivalente.
-    """
-    code:                str
-    name:                str
-    status:              str   # "active" | "inactive"
-    email:               str   # identificador de login futuro — único e em minúsculas
-    forecast_participant: bool  # derivado de status: ativo = True, inativo = False
-    last_upload:         str   # DD/MM/AAAA ou "—"
-    period_status:       str   # valid | invalid | pending | not_expected
-    recent_uploads:      list[dict] = field(default_factory=list)
-    users:               list[str]  = field(default_factory=list)
+    supplier_id: str
+    code: str
+    name: str
+    email: str
+    status: str
+    last_upload: str = "—"
+    period_status: str = "pending"
+    recent_uploads: list = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Conversão de dict → SupplierRecord
-# ---------------------------------------------------------------------------
-
-def _dict_to_record(d: dict) -> SupplierRecord:
-    status = d.get("status", "active")
-    # Email: campo explícito, ou primeiro elemento de 'users' como fallback para mock
-    raw_email = d.get("email", "") or (d["users"][0] if d.get("users") else "")
-    email     = raw_email.strip().lower()
+def _row_to_record(row: dict) -> SupplierRecord:
+    last_upload   = str(row["LAST_UPLOAD"]).strip() if row.get("LAST_UPLOAD") else "—"
+    period_status = str(row.get("PERIOD_STATUS", "pending") or "pending")
     return SupplierRecord(
-        code=                d["code"],
-        name=                d["name"],
-        status=              status,
-        email=               email,
-        forecast_participant=(status == "active"),
-        last_upload=         d.get("last_upload", "—"),
-        period_status=       d.get("period_status", "pending"),
-        recent_uploads=      list(d.get("recent_uploads", [])),
-        users=               list(d.get("users", [])),
+        supplier_id=row["SUPPLIER_ID"],
+        code=row["SUPPLIER_CODE"],
+        name=row["SUPPLIER_NAME"],
+        email=row["EMAIL"],
+        status=row["STATUS"],
+        last_upload=last_upload,
+        period_status=period_status,
     )
 
 
-# ---------------------------------------------------------------------------
-# Funções de acesso
-# ---------------------------------------------------------------------------
-
 def get_all_suppliers() -> list[SupplierRecord]:
-    """
-    Retorna a lista de fornecedores respeitando o modo configurado em DEMO_MODE.
-
-    DEMO_MODE = False (padrão / teste funcional):
-        Retorna apenas os fornecedores cadastrados na sessão atual.
-        Estado inicial: lista vazia.
-
-    DEMO_MODE = True (apresentação/demo):
-        Retorna fornecedores mockados (com overrides de sessão aplicados)
-        + fornecedores novos criados na sessão.
-    """
-    from utils.constants import DEMO_MODE
-    from utils.session_state import get_session_supplier, get_new_session_suppliers
-
-    # Fornecedores criados na sessão — COM overrides aplicados.
-    # Isso garante que set_session_supplier() (Inativar/Ativar/Editar)
-    # reflita imediatamente, independente do DEMO_MODE.
-    session_suppliers: list[SupplierRecord] = []
-    for d in get_new_session_suppliers():
-        override = get_session_supplier(d["code"]) or {}
-        session_suppliers.append(_dict_to_record({**d, **override}))
-
-    if not DEMO_MODE:
-        # Modo funcional: apenas fornecedores cadastrados na sessão (com overrides)
-        return session_suppliers
-
-    # Modo demonstração: mock (com overrides) + sessão (com overrides)
-    result: list[SupplierRecord] = []
-    for d in get_mock_suppliers():
-        override = get_session_supplier(d["code"]) or {}
-        result.append(_dict_to_record({**d, **override}))
-
-    result.extend(session_suppliers)
-    return result
+    df = execute_query(f"""
+        SELECT
+            s.SUPPLIER_ID, s.SUPPLIER_CODE, s.SUPPLIER_NAME, s.EMAIL, s.STATUS,
+            COALESCE(TO_CHAR(MAX(ub.UPLOADED_AT), 'DD/MM/YYYY HH24:MI'), '—') as LAST_UPLOAD,
+            CASE
+                WHEN MAX(CASE WHEN ub.STATUS = 'VALID' AND ub.IS_ACTIVE THEN 1 END) = 1 THEN 'valid'
+                WHEN MAX(CASE WHEN ub.STATUS = 'INVALID' THEN 1 END) = 1 THEN 'invalid'
+                WHEN s.STATUS = 'inactive' THEN 'not_expected'
+                ELSE 'pending'
+            END as PERIOD_STATUS
+        FROM {DATABASE}.CONTROL.SUPPLIERS s
+        LEFT JOIN {DATABASE}.CONTROL.UPLOAD_BATCHES ub ON s.SUPPLIER_ID = ub.SUPPLIER_ID
+        GROUP BY s.SUPPLIER_ID, s.SUPPLIER_CODE, s.SUPPLIER_NAME, s.EMAIL, s.STATUS
+        ORDER BY s.SUPPLIER_CODE
+    """)
+    if df is None or df.empty:
+        return []
+    return [_row_to_record(row) for _, row in df.iterrows()]
 
 
-def get_supplier_by_code(code: str) -> SupplierRecord | None:
-    """
-    Retorna um fornecedor pelo código (case-insensitive).
-    Aplica overrides de sessão e cobre fornecedores criados localmente.
-    Retorna None se não encontrado.
-    """
-    for s in get_all_suppliers():
-        if s.code.upper() == code.upper():
-            return s
-    return None
+def get_supplier_by_code(code: str) -> Optional[SupplierRecord]:
+    df = execute_query(
+        f"SELECT * FROM {DATABASE}.CONTROL.SUPPLIERS WHERE UPPER(SUPPLIER_CODE) = :code",
+        params={"code": code.strip().upper()},
+    )
+    if df is None or df.empty:
+        return None
+    return _row_to_record(df.iloc[0].to_dict())
+
+
+def get_supplier_by_email(email: str) -> Optional[SupplierRecord]:
+    df = execute_query(
+        f"SELECT * FROM {DATABASE}.CONTROL.SUPPLIERS WHERE LOWER(EMAIL) = :email",
+        params={"email": email.strip().lower()},
+    )
+    if df is None or df.empty:
+        return None
+    return _row_to_record(df.iloc[0].to_dict())
+
+
+def get_supplier_by_id(supplier_id: str) -> Optional[SupplierRecord]:
+    df = execute_query(
+        f"SELECT * FROM {DATABASE}.CONTROL.SUPPLIERS WHERE SUPPLIER_ID = :sid",
+        params={"sid": supplier_id},
+    )
+    if df is None or df.empty:
+        return None
+    return _row_to_record(df.iloc[0].to_dict())
 
 
 def get_next_supplier_code() -> str:
-    """
-    Retorna o próximo código de fornecedor disponível no formato SUP001, SUP002, …
+    df = execute_query(
+        f"""SELECT MAX(CAST(REPLACE(SUPPLIER_CODE, 'SUP', '') AS INTEGER)) as MAX_NUM
+            FROM {DATABASE}.CONTROL.SUPPLIERS
+            WHERE SUPPLIER_CODE LIKE 'SUP%'"""
+    )
+    if df is None or df.empty or df.iloc[0]["MAX_NUM"] is None:
+        return "SUP001"
+    return f"SUP{int(df.iloc[0]['MAX_NUM']) + 1:03d}"
 
-    Regras:
-    - Analisa todos os códigos existentes (mock + overrides + novos da sessão).
-    - Considera apenas códigos que seguem o padrão SUP + 3 dígitos.
-    - Retorna SUP + (maior_número + 1) com zero-padding de 3 dígitos.
-    - Se nenhum código no padrão existir, retorna SUP001.
-    - O código gerado é garantidamente único na lista atual.
-    """
-    import re
-    all_codes = [s.code.upper() for s in get_all_suppliers()]
-    pattern   = re.compile(r"^SUP(\d{3})$")
-    numbers   = [
-        int(m.group(1))
-        for code in all_codes
-        if (m := pattern.match(code))
-    ]
-    next_num = (max(numbers) + 1) if numbers else 1
-    return f"SUP{next_num:03d}"
+
+def create_supplier(name: str, email: str, status: str = "active") -> Optional[SupplierRecord]:
+    import uuid
+    supplier_id = str(uuid.uuid4())[:36]
+    code = get_next_supplier_code()
+
+    session = get_snowflake_session()
+    if session is None:
+        logger.error(
+            "[supplier_service] create_supplier falhou: sessão Snowflake indisponível. "
+            "Verifique logs de snowflake_service para detalhes da conexão."
+        )
+        return None
+
+    # Escape single quotes to prevent SQL errors
+    safe_name = name.replace("'", "''")
+    safe_email = email.replace("'", "''")
+    safe_status = status.replace("'", "''")
+
+    sql = (
+        f"INSERT INTO {DATABASE}.CONTROL.SUPPLIERS"
+        f" (SUPPLIER_ID, SUPPLIER_CODE, SUPPLIER_NAME, EMAIL, STATUS)"
+        f" VALUES ('{supplier_id}', '{code}', '{safe_name}', '{safe_email}', '{safe_status}')"
+    )
+
+    try:
+        session.sql(sql).collect()
+    except Exception as exc:
+        logger.error(
+            "[supplier_service] create_supplier falhou ao executar INSERT.\n"
+            "  SQL: %s\n"
+            "  erro: %s\n"
+            "  tipo: %s\n"
+            "  Possíveis causas:\n"
+            "    - Tabela %s.CONTROL.SUPPLIERS não existe\n"
+            "    - Colunas incompatíveis com o DDL real\n"
+            "    - Role/warehouse sem permissão de INSERT\n"
+            "    - Database/schema errado na sessão",
+            sql[:300], exc, type(exc).__name__, DATABASE,
+        )
+        return None
+
+    return SupplierRecord(
+        supplier_id=supplier_id,
+        code=code,
+        name=name,
+        email=email,
+        status=status,
+    )
+
+
+def update_supplier_status(supplier_id: str, new_status: str) -> bool:
+    session = get_snowflake_session()
+    if session is None:
+        return False
+    session.sql(f"""
+        UPDATE {DATABASE}.CONTROL.SUPPLIERS
+        SET STATUS = '{new_status}', UPDATED_AT = CURRENT_TIMESTAMP()
+        WHERE SUPPLIER_ID = '{supplier_id}'
+    """).collect()
+    return True
 
 
 def get_summary() -> dict:
-    """
-    Retorna métricas de cadastro de fornecedores para os cards de resumo.
-
-    No MVP local, fornecedores são mantidos em session_state.
-    Em produção, este cadastro deverá ser persistido em CONTROL.suppliers
-    ou tabela equivalente no Snowflake.
-    """
-    all_s = get_all_suppliers()
+    df = execute_query(
+        f"""SELECT
+                SUM(CASE WHEN STATUS = 'active' THEN 1 ELSE 0 END)   as TOTAL_ACTIVE,
+                SUM(CASE WHEN STATUS = 'inactive' THEN 1 ELSE 0 END) as TOTAL_INACTIVE
+            FROM {DATABASE}.CONTROL.SUPPLIERS"""
+    )
+    if df is None or df.empty:
+        return {"total_active": 0, "total_inactive": 0}
+    row = df.iloc[0].to_dict()
     return {
-        "total_active":   sum(1 for s in all_s if s.status == "active"),
-        "total_inactive": sum(1 for s in all_s if s.status == "inactive"),
+        "total_active":   int(row.get("TOTAL_ACTIVE", 0) or 0),
+        "total_inactive": int(row.get("TOTAL_INACTIVE", 0) or 0),
     }
+
+
+def update_supplier(supplier_id: str, name: str, email: str, status: str) -> bool:
+    session = get_snowflake_session()
+    if session is None:
+        return False
+    safe_name = name.replace("'", "''")
+    safe_email = email.replace("'", "''")
+    safe_status = status.replace("'", "''")
+    session.sql(f"""
+        UPDATE {DATABASE}.CONTROL.SUPPLIERS
+        SET SUPPLIER_NAME = '{safe_name}', EMAIL = '{safe_email}', STATUS = '{safe_status}',
+            UPDATED_AT = CURRENT_TIMESTAMP()
+        WHERE SUPPLIER_ID = '{supplier_id}'
+    """).collect()
+    return True

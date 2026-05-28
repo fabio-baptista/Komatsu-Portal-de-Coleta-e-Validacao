@@ -19,11 +19,21 @@ import pandas as pd
 import streamlit as st
 
 from components.badges import version_badge
-from components.cards import metric_card, render_cards_row
-from services.mock_data_service import get_mock_validated_forecast
+from services.mock_data_service import get_mock_validated_forecast, get_current_open_window
+from komatsu_ds import layout
 from utils.constants import DEMO_MODE
 from utils.dates import format_period_pt
 from utils.session_state import get_session_validated_forecasts
+
+
+# ---------------------------------------------------------------------------
+# Labels dos filtros "selecionar todos" — explícitos para evitar ambiguidade
+# ---------------------------------------------------------------------------
+
+_ALL_PERIODS_LABEL   = "Todos os períodos"
+_ALL_SUPPLIERS_LABEL = "Todos os fornecedores"
+_ALL_BRANCHES_LABEL  = "Todas as filiais"
+_ALL_MATERIALS_LABEL = "Todos os materiais"
 
 
 # ---------------------------------------------------------------------------
@@ -75,16 +85,9 @@ def _mock_to_rows() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _render_page_header() -> None:
-    st.markdown(
-        """
-        <div class="kmt-section">
-            <p class="kmt-section-title">Forecasts Validados</p>
-            <p class="kmt-section-subtitle">
-                Consulte os forecasts válidos enviados pelos fornecedores.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    layout.page_header(
+        title="Forecasts Validados",
+        subtitle="Consulte os forecasts válidos enviados pelos fornecedores.",
     )
 
 
@@ -122,6 +125,9 @@ def _render_filters(rows: list[dict]) -> tuple[list[dict], str, str]:
     Filtros: Período, Fornecedor, Filial, Material.
     Opções de Filial e Material são construídas dinamicamente a partir dos dados.
     Retorna (linhas filtradas, período selecionado, fornecedor selecionado).
+
+    Default de Período: janela de coleta ativa (se existir e o período estiver nos dados).
+    Fallback: _ALL_PERIODS_LABEL (todos os períodos).
     """
     # Períodos ordenados cronologicamente (desc) usando chave raw, exibindo formatado
     period_map = {r["_period_key"]: r["period"] for r in rows}
@@ -130,22 +136,34 @@ def _render_filters(rows: list[dict]) -> tuple[list[dict], str, str]:
     branches  = sorted({r["branch"]        for r in rows if r["branch"]        != "—"})
     materials = sorted({r["material_code"] for r in rows if r["material_code"] != "—"})
 
+    # --- Default de período: janela ativa, senão "todos" ---
+    period_opts = [_ALL_PERIODS_LABEL] + periods
+    window = get_current_open_window()
+    active_period_raw = window.get("period") if window else None
+    active_period_fmt = format_period_pt(active_period_raw) if active_period_raw else None
+
+    if active_period_fmt and active_period_fmt in periods:
+        default_period_index = period_opts.index(active_period_fmt)
+    else:
+        default_period_index = 0  # fallback: "Todos os períodos"
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         sel_period = st.selectbox(
             "Período",
-            ["Todos"] + periods,
+            period_opts,
+            index=default_period_index,
             key="vd_filter_period",
         )
     with col2:
         sel_supplier = st.selectbox(
             "Fornecedor",
-            ["Todos"] + suppliers,
+            [_ALL_SUPPLIERS_LABEL] + suppliers,
             key="vd_filter_supplier",
         )
     with col3:
-        branch_opts = ["Todas as Filiais"] + branches
+        branch_opts = [_ALL_BRANCHES_LABEL] + branches
         sel_branch  = st.selectbox(
             "Filial",
             branch_opts,
@@ -153,7 +171,7 @@ def _render_filters(rows: list[dict]) -> tuple[list[dict], str, str]:
             help="Disponível quando há dados com granularidade por filial." if not branches else None,
         )
     with col4:
-        material_opts = ["Todos os Materiais"] + materials
+        material_opts = [_ALL_MATERIALS_LABEL] + materials
         sel_material  = st.selectbox(
             "Material",
             material_opts,
@@ -164,16 +182,16 @@ def _render_filters(rows: list[dict]) -> tuple[list[dict], str, str]:
     # Aplicar filtros
     result = rows
 
-    if sel_period != "Todos":
+    if sel_period != _ALL_PERIODS_LABEL:
         result = [r for r in result if r["period"] == sel_period]
 
-    if sel_supplier != "Todos":
+    if sel_supplier != _ALL_SUPPLIERS_LABEL:
         result = [r for r in result if r["supplier"] == sel_supplier]
 
-    if sel_branch != "Todas as Filiais" and branches:
+    if sel_branch != _ALL_BRANCHES_LABEL and branches:
         result = [r for r in result if r["branch"] == sel_branch]
 
-    if sel_material != "Todos os Materiais" and materials:
+    if sel_material != _ALL_MATERIALS_LABEL and materials:
         result = [r for r in result if r["material_code"] == sel_material]
 
     return result, sel_period, sel_supplier
@@ -195,24 +213,25 @@ def _render_summary_cards(
     total         = len(rows)
     n_suppliers   = len({r["supplier"] for r in rows})
     qty_total     = sum(r["qty"] for r in rows if isinstance(r["qty"], int))
-    period_label  = sel_period if sel_period != "Todos" else "Todos os períodos"
+    # sel_period já é o label correto: "Maio/2026" ou "Todos os períodos"
+    period_label  = sel_period
 
     qty_card_label = "Qtd. Prevista Total"
 
     cards = [
-        metric_card("Registros Validados",  str(total)),
-        metric_card("Fornecedores",         str(n_suppliers)),
-        metric_card("Período",              period_label),
-        metric_card(qty_card_label,         str(qty_total) if qty_total else "—"),
+        {"label": "Registros Validados", "value": str(total),                           "icon": "✅", "neutral": True},
+        {"label": "Fornecedores",        "value": str(n_suppliers),                     "icon": "🏢", "neutral": True},
+        {"label": "Período",             "value": period_label,                         "icon": "📅", "neutral": True},
+        {"label": qty_card_label,        "value": str(qty_total) if qty_total else "—", "icon": "📦", "neutral": True},
     ]
 
     # "Versão Ativa" apenas quando há fornecedor E período específicos selecionados
-    if sel_supplier != "Todos" and sel_period != "Todos" and rows:
+    if sel_supplier != _ALL_SUPPLIERS_LABEL and sel_period != _ALL_PERIODS_LABEL and rows:
         versions = [r["version"] for r in rows if isinstance(r["version"], int)]
         if versions:
-            cards.append(metric_card("Versão Ativa", f"v.{max(versions)}"))
+            cards.append({"label": "Versão Ativa", "value": f"v.{max(versions)}", "icon": "🔖", "neutral": True})
 
-    render_cards_row(cards)
+    layout.kpi_row(cards)
 
 
 def _render_table(rows: list[dict]) -> str:
@@ -345,22 +364,12 @@ def _render_export(rows: list[dict]) -> None:
 
 
 def _render_empty_state() -> None:
-    st.markdown(
-        """
-        <div class="kmt-alert kmt-alert--info" style="margin-top:16px;">
-            <div class="kmt-alert-icon">📭</div>
-            <div>
-                <p class="kmt-alert-title">
-                    Nenhum forecast válido disponível para os filtros selecionados.
-                </p>
-                <p class="kmt-alert-body">
-                    Ajuste os filtros ou aguarde o envio dos fornecedores.
-                    Acesse o Painel de Coleta para acompanhar o status por fornecedor.
-                </p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    layout.empty_state(
+        message=(
+            "Nenhum forecast válido disponível para os filtros selecionados. "
+            "Ajuste os filtros ou aguarde o envio dos fornecedores."
+        ),
+        icon="📭",
     )
 
 
@@ -410,11 +419,11 @@ def render() -> None:
 
     # Sem dados em nenhuma fonte → empty state e encerra
     if not base_rows:
-        render_cards_row([
-            metric_card("Registros Validados",   "0"),
-            metric_card("Fornecedores",          "0"),
-            metric_card("Período",               "—"),
-            metric_card("Qtd. Prevista Total",   "—"),
+        layout.kpi_row([
+            {"label": "Registros Validados",  "value": "0", "icon": "✅", "neutral": True},
+            {"label": "Fornecedores",         "value": "0", "icon": "🏢", "neutral": True},
+            {"label": "Período",              "value": "—", "icon": "📅", "neutral": True},
+            {"label": "Qtd. Prevista Total",  "value": "—", "icon": "📦", "neutral": True},
         ])
         _render_empty_state()
         return

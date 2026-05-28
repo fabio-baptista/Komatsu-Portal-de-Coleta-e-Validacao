@@ -11,8 +11,7 @@ Layout:
   5. Tabela com coluna "⋮" por linha
   6. Área contextual compacta após clicar ⋮
 
-Dados: mock + overrides de sessão + novos cadastros locais.
-Sem Snowflake.
+Dados: CONTROL.SUPPLIERS via Snowflake (fonte de verdade).
 """
 
 import streamlit as st
@@ -20,13 +19,21 @@ import streamlit as st
 from components.badges import status_badge
 from components.cards import metric_card, render_cards_row
 from services.mock_data_service import get_current_open_window
-from services.supplier_service import SupplierRecord, get_all_suppliers, get_next_supplier_code, get_summary
+from services.supplier_service import (
+    SupplierRecord,
+    create_supplier,
+    get_all_suppliers,
+    get_next_supplier_code,
+    get_supplier_by_code,
+    get_summary,
+    update_supplier,
+    update_supplier_status,
+)
 from services.upload_service import get_admin_status_rows
 from utils.session_state import (
-    add_new_session_supplier,
     navigate_to,
-    set_session_supplier,
 )
+from utils.streamlit_compat import safe_rerun
 
 # Limite de fornecedores exibidos por vez (sem paginação completa)
 _DISPLAY_LIMIT = 50
@@ -41,20 +48,30 @@ _COLS = [2.5, 2.5, 1.2, 1.2, 1.5, 1.5, 0.8]
 # ---------------------------------------------------------------------------
 
 def _cb_inativar(code: str, name: str) -> None:
-    set_session_supplier(code, {"status": "inactive"})
-    st.session_state.supplier_status_msg = (
-        f"Fornecedor **{name}** inativado com sucesso."
-    )
+    supplier = get_supplier_by_code(code)
+    if supplier and update_supplier_status(supplier.supplier_id, "inactive"):
+        st.session_state.supplier_status_msg = (
+            f"Fornecedor **{name}** inativado com sucesso."
+        )
+    else:
+        st.session_state.supplier_status_msg = (
+            f"Erro ao inativar fornecedor **{name}**."
+        )
     if st.session_state.get("selected_supplier_code") == code:
         st.session_state.selected_supplier_code = None
         st.session_state.supplier_show_detail   = False
 
 
 def _cb_ativar(code: str, name: str) -> None:
-    set_session_supplier(code, {"status": "active"})
-    st.session_state.supplier_status_msg = (
-        f"Fornecedor **{name}** ativado com sucesso."
-    )
+    supplier = get_supplier_by_code(code)
+    if supplier and update_supplier_status(supplier.supplier_id, "active"):
+        st.session_state.supplier_status_msg = (
+            f"Fornecedor **{name}** ativado com sucesso."
+        )
+    else:
+        st.session_state.supplier_status_msg = (
+            f"Erro ao ativar fornecedor **{name}**."
+        )
 
 
 def _cb_ver_detalhe(code: str) -> None:
@@ -141,7 +158,7 @@ def _render_page_header() -> None:
                 st.session_state.suppliers_edit_code    = None
                 st.session_state.selected_supplier_code = None
                 st.session_state.supplier_show_detail   = False
-            st.rerun()
+            safe_rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +206,6 @@ def _render_supplier_form() -> None:
 
     defaults: dict = {"name": "", "email": "", "status": "active"}
     if mode == "edit" and edit_code:
-        from services.supplier_service import get_supplier_by_code
         s = get_supplier_by_code(edit_code)
         if s:
             defaults = {"name": s.name, "email": s.email, "status": s.status}
@@ -244,7 +260,7 @@ def _render_supplier_form() -> None:
     if cancelled:
         st.session_state.suppliers_form_mode = None
         st.session_state.suppliers_edit_code = None
-        st.rerun()
+        safe_rerun()
 
     if submitted:
         nome_clean  = nome.strip()
@@ -267,28 +283,32 @@ def _render_supplier_form() -> None:
         supplier_status = "active" if status_val == "Ativo" else "inactive"
 
         if mode == "add":
-            final_code = get_next_supplier_code()
-            add_new_session_supplier({
-                "code":          final_code,
-                "name":          nome_clean,
-                "email":         email_clean,
-                "status":        supplier_status,
-                "users":         [email_clean],
-                "last_upload":   "—",
-                "period_status": "pending",
-                "recent_uploads": [],
-            })
+            result = create_supplier(nome_clean, email_clean, supplier_status)
+            if result is None:
+                st.error(
+                    "Falha ao gravar fornecedor no Snowflake. "
+                    "Verifique a conexão e tente novamente."
+                )
+                return
         else:
-            set_session_supplier(edit_code, {
-                "name":   nome_clean,
-                "email":  email_clean,
-                "status": supplier_status,
-            })
+            supplier = get_supplier_by_code(edit_code)
+            if supplier is None:
+                st.error("Fornecedor não encontrado para edição.")
+                return
+            success = update_supplier(
+                supplier.supplier_id, nome_clean, email_clean, supplier_status
+            )
+            if not success:
+                st.error(
+                    "Falha ao atualizar fornecedor no Snowflake. "
+                    "Verifique a conexão e tente novamente."
+                )
+                return
 
         st.session_state.suppliers_form_mode  = None
         st.session_state.suppliers_edit_code  = None
         st.session_state.suppliers_just_saved = nome_clean
-        st.rerun()
+        safe_rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -354,21 +374,17 @@ def _render_filters(suppliers: list[SupplierRecord]) -> list[SupplierRecord]:
 
     with col1:
         sel_suppliers = st.multiselect(
-            "Fornecedor",
+            "Todos os fornecedores",
             options=supplier_names,
             default=[],
-            placeholder="Todos os fornecedores",
             key="flt_supplier",
-            label_visibility="collapsed",
         )
     with col2:
         sel_status = st.multiselect(
-            "Status",
+            "Todos os status",
             options=status_opts,
             default=[],
-            placeholder="Todos os status",
             key="flt_status",
-            label_visibility="collapsed",
         )
     with col3:
         period_lbl = _current_period_label()
@@ -376,9 +392,7 @@ def _render_filters(suppliers: list[SupplierRecord]) -> list[SupplierRecord]:
             f"Status {period_lbl}",
             options=period_opts,
             default=[],
-            placeholder=f"Status {period_lbl}",
             key="flt_period",
-            label_visibility="collapsed",
         )
 
     # ── Aplicar filtros ───────────────────────────────────────────────────────
@@ -591,7 +605,6 @@ def _render_suppliers_table(
 
 def _render_supplier_detail(code: str) -> None:
     """Detalhe inline: informações cadastrais + envios recentes reais da sessão."""
-    from services.supplier_service import get_supplier_by_code
     from services.upload_service import get_supplier_uploads
     s = get_supplier_by_code(code)
     if s is None:
@@ -623,7 +636,7 @@ def _render_supplier_detail(code: str) -> None:
         if st.button("✕  Fechar detalhe", key="btn_close_detail", use_container_width=True):
             st.session_state.supplier_show_detail   = False
             st.session_state.selected_supplier_code = None
-            st.rerun()
+            safe_rerun()
 
     # BUG-06: HTML corrigido — sem blocos duplicados de "Último envio" e "Status no período"
     st.markdown(

@@ -1,91 +1,148 @@
 """
 auth_service.py
 
-Serviço de autenticação e controle de sessão — Portal Komatsu.
-
-STATUS ATUAL: Stub / MVP local
------------------------------------------------------------------------
-A autenticação neste MVP é simulada. O login é feito por botão de perfil
-(Fornecedor / Administrador) sem credenciais reais. Os dados do usuário
-ativo são carregados de mock_data_service.get_current_mock_user().
-
-Este arquivo está reservado para a implementação da autenticação real,
-que será definida na integração com Snowflake/IdP ou mecanismo aprovado
-pelo cliente.
-
-Evolução esperada:
-- Substituir _do_login (streamlit_app.py) por autenticação via SSO/IdP.
-- Implementar get_current_user() consultando o sistema de identidade real.
-- Implementar is_admin() / is_supplier() a partir de claims do token.
-- Registrar audit log de acesso por usuário.
------------------------------------------------------------------------
+Servico de autenticacao - Portal Komatsu.
+Autentica usuarios via CONTROL.USERS com SHA2-256 + salt.
 """
 
 import streamlit as st
+from typing import Optional
+
+from services.snowflake_service import execute_query, get_snowflake_session
+
+DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
+SALT_PREFIX = "salt_kmt_"
+SALT_SUFFIX = "_portal"
 
 
-# ---------------------------------------------------------------------------
-# Funções stub — retornam dados do session_state atual (MVP local)
-# ---------------------------------------------------------------------------
-
-def get_current_role() -> str | None:
-    """
-    Retorna o perfil do usuário logado ('supplier' | 'admin') ou None.
-
-    No MVP, o perfil é definido no login simulado e armazenado em
-    st.session_state.role. Em produção, virá de claims do token de autenticação.
-    """
-    return st.session_state.get("role")
+def _hash_password(password: str) -> str:
+    session = get_snowflake_session()
+    if session is None:
+        return ""
+    result = session.sql(
+        f"SELECT SHA2('{SALT_PREFIX}' || '{password}' || '{SALT_SUFFIX}', 256) as H"
+    ).collect()
+    return result[0]["H"] if result else ""
 
 
-def get_current_user() -> dict:
-    """
-    Retorna um dicionário com os dados básicos do usuário logado.
+def authenticate_user(email: str, password: str) -> Optional[dict]:
+    password_hash = _hash_password(password)
+    if not password_hash:
+        return None
 
-    No MVP, os dados vêm do session_state preenchido pelo mock de login.
-    Em produção, virá do sistema de identidade (SSO/IdP/Snowflake).
+    df = execute_query(
+        f"""SELECT u.USER_ID, u.EMAIL, u.DISPLAY_NAME, u.ROLE, u.SUPPLIER_ID, u.IS_ACTIVE,
+                   s.SUPPLIER_CODE, s.SUPPLIER_NAME, s.STATUS as SUPPLIER_STATUS
+            FROM {DATABASE}.CONTROL.USERS u
+            LEFT JOIN {DATABASE}.CONTROL.SUPPLIERS s ON u.SUPPLIER_ID = s.SUPPLIER_ID
+            WHERE LOWER(u.EMAIL) = :email AND u.PASSWORD_HASH = :hash""",
+        params={"email": email.strip().lower(), "hash": password_hash},
+    )
 
-    Retorno:
-        {
-            "name":        str,
-            "email":       str,
-            "role":        str | None,
-            "supplier_id": str | None,
-        }
-    """
+    if df is None or df.empty:
+        return None
+
+    row = df.iloc[0].to_dict()
+
+    if not row.get("IS_ACTIVE", False):
+        return None
+
     return {
-        "name":        st.session_state.get("user_name", ""),
-        "email":       st.session_state.get("user_email", ""),
-        "role":        st.session_state.get("role"),
-        "supplier_id": st.session_state.get("supplier_id"),
+        "user_id": row["USER_ID"],
+        "email": row["EMAIL"],
+        "display_name": row["DISPLAY_NAME"],
+        "role": row["ROLE"],
+        "supplier_id": row.get("SUPPLIER_ID"),
+        "supplier_code": row.get("SUPPLIER_CODE"),
+        "supplier_name": row.get("SUPPLIER_NAME"),
+        "supplier_status": row.get("SUPPLIER_STATUS"),
     }
 
 
-def is_admin() -> bool:
-    """
-    Retorna True se o usuário logado tem perfil administrativo.
+def authenticate_supplier_by_email(email: str) -> Optional[dict]:
+    df = execute_query(
+        f"""SELECT u.USER_ID, u.EMAIL, u.DISPLAY_NAME, u.ROLE, u.SUPPLIER_ID, u.IS_ACTIVE,
+                   s.SUPPLIER_CODE, s.SUPPLIER_NAME, s.STATUS as SUPPLIER_STATUS
+            FROM {DATABASE}.CONTROL.USERS u
+            JOIN {DATABASE}.CONTROL.SUPPLIERS s ON u.SUPPLIER_ID = s.SUPPLIER_ID
+            WHERE LOWER(u.EMAIL) = :email AND u.ROLE = 'supplier'""",
+        params={"email": email.strip().lower()},
+    )
 
-    No MVP, verifica st.session_state.role.
-    Em produção, verificará claims do token.
-    """
-    return st.session_state.get("role") == "admin"
+    if df is None or df.empty:
+        return None
+
+    row = df.iloc[0].to_dict()
+
+    return {
+        "user_id": row["USER_ID"],
+        "email": row["EMAIL"],
+        "display_name": row["DISPLAY_NAME"],
+        "role": row["ROLE"],
+        "supplier_id": row.get("SUPPLIER_ID"),
+        "supplier_code": row.get("SUPPLIER_CODE"),
+        "supplier_name": row.get("SUPPLIER_NAME"),
+        "supplier_status": row.get("SUPPLIER_STATUS"),
+        "is_active": row.get("IS_ACTIVE", False),
+    }
 
 
-def is_supplier() -> bool:
-    """
-    Retorna True se o usuário logado tem perfil de fornecedor.
+def do_supplier_login(email: str) -> dict:
+    user = authenticate_supplier_by_email(email)
+    if user is None:
+        return {"success": False, "error": "email_not_found"}
 
-    No MVP, verifica st.session_state.role.
-    Em produção, verificará claims do token.
-    """
-    return st.session_state.get("role") == "supplier"
+    if not user.get("is_active", False):
+        return {"success": False, "error": "user_inactive"}
+
+    if user.get("supplier_status") != "active":
+        return {"success": False, "error": "supplier_inactive"}
+
+    st.session_state.logged_in = True
+    st.session_state.role = "supplier"
+    st.session_state.user_name = user["supplier_name"] or user["display_name"]
+    st.session_state.user_email = user["email"]
+    st.session_state.user_initials = _initials(user["supplier_name"] or user["display_name"])
+    st.session_state.supplier_id = user["supplier_code"]
+    st.session_state.supplier_email = user["email"]
+    st.session_state.user_id = user["user_id"]
+    st.session_state.page = "home"
+
+    return {"success": True}
 
 
-def is_authenticated() -> bool:
-    """
-    Retorna True se há uma sessão ativa (usuário logado).
+def do_admin_login(email: str = "admin@komatsu.com.br", password: str = "") -> dict:
+    if not password:
+        df = execute_query(
+            f"""SELECT u.USER_ID, u.EMAIL, u.DISPLAY_NAME, u.ROLE
+                FROM {DATABASE}.CONTROL.USERS u
+                WHERE LOWER(u.EMAIL) = :email AND u.ROLE = 'admin' AND u.IS_ACTIVE = TRUE""",
+            params={"email": email.strip().lower()},
+        )
+        if df is None or df.empty:
+            return {"success": False, "error": "admin_not_found"}
+        row = df.iloc[0].to_dict()
+    else:
+        user = authenticate_user(email, password)
+        if user is None:
+            return {"success": False, "error": "invalid_credentials"}
+        if user["role"] != "admin":
+            return {"success": False, "error": "not_admin"}
+        row = user
 
-    No MVP, verifica st.session_state.logged_in.
-    Em produção, validará o token de sessão.
-    """
-    return bool(st.session_state.get("logged_in"))
+    st.session_state.logged_in = True
+    st.session_state.role = "admin"
+    st.session_state.user_name = row.get("display_name") or row.get("DISPLAY_NAME", "Admin")
+    st.session_state.user_email = row.get("email") or row.get("EMAIL", "")
+    st.session_state.user_initials = _initials(row.get("display_name") or row.get("DISPLAY_NAME", "Admin"))
+    st.session_state.user_id = row.get("user_id") or row.get("USER_ID", "")
+    st.session_state.page = "admin_dashboard"
+
+    return {"success": True}
+
+
+def _initials(name: str) -> str:
+    parts = name.split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[-1][0]).upper()
+    return name[:2].upper() if name else "??"

@@ -6,29 +6,31 @@ Compatível com execução local e com Streamlit in Snowflake.
 
 Comportamento por ambiente:
   - Streamlit in Snowflake  → usa get_active_session() do Snowpark (sem credenciais)
-  - Execução local           → todas as funções retornam None/False e logam aviso
-                               O app continua operando com dados mockados normalmente
+  - Execução local           → cria sessão via Snowpark Session.builder usando
+                               connection_name da configuração ~/.snowflake/connections.toml
 
 Regras:
   - Sem credenciais no código.
-  - Sem uso de secrets nesta fase.
   - Falha controlada: nenhuma exceção propaga para a UI.
-  - is_running_in_snowflake() é o ponto de decisão em toda a aplicação.
-
-Uso típico no app:
-  if is_running_in_snowflake():
-      session = get_snowflake_session()
-      df = read_table(session, "TRUSTED.forecast_validated")
-  else:
-      df = pd.DataFrame(get_mock_validated_forecast())
 """
 
 import logging
+import os
 from typing import Optional
 
 import pandas as pd
 
+# Garante que logs ERROR/WARNING sejam visíveis no terminal do Streamlit
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
+
+# Cache da sessão local para evitar reconexões a cada chamada
+_local_session_cache = None
+
+# Nome da conexão usada localmente (connections.toml)
+_LOCAL_CONNECTION_NAME = os.environ.get(
+    "SNOWFLAKE_CONNECTION_NAME", "KOMATSU_BRAZIL_INTERNATIONAL_PAT"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -38,12 +40,6 @@ logger = logging.getLogger(__name__)
 def is_running_in_snowflake() -> bool:
     """
     Retorna True se o app está rodando dentro do Streamlit in Snowflake.
-
-    A detecção usa a presença do módulo snowflake.snowpark e a disponibilidade
-    de get_active_session() sem lançar exceção — indicativo do ambiente SiS.
-
-    Localmente, o Snowpark não está disponível ou a sessão ativa não existe,
-    então retorna False silenciosamente.
     """
     try:
         from snowflake.snowpark.context import get_active_session
@@ -59,28 +55,61 @@ def is_running_in_snowflake() -> bool:
 
 def get_snowflake_session():
     """
-    Retorna a sessão Snowpark ativa quando rodando em Streamlit in Snowflake.
-    Retorna None se o ambiente não for Snowflake ou se ocorrer qualquer erro.
+    Retorna uma sessão Snowpark.
 
-    Não aceita parâmetros de conexão — a sessão é gerenciada pelo ambiente SiS.
-    Para uso externo (Snowflake Connector, etc.), esta função não é adequada.
+    Prioridade:
+      1. Streamlit in Snowflake (get_active_session)
+      2. Conexão local via Session.builder (connections.toml)
 
     Retorno:
         snowflake.snowpark.Session | None
     """
-    if not is_running_in_snowflake():
-        logger.debug(
-            "[snowflake_service] Execução local detectada. "
-            "Sessão Snowflake não disponível."
-        )
-        return None
+    global _local_session_cache
 
+    # 1. Tentar SiS
     try:
         from snowflake.snowpark.context import get_active_session
-        return get_active_session()
+        session = get_active_session()
+        if session is not None:
+            return session
+    except Exception:
+        pass
+
+    # 2. Tentar sessão local cacheada
+    if _local_session_cache is not None:
+        try:
+            # Verifica se a sessão ainda está válida
+            _local_session_cache.sql("SELECT 1").collect()
+            return _local_session_cache
+        except Exception:
+            _local_session_cache = None
+
+    # 3. Criar sessão local via connections.toml
+    try:
+        from snowflake.snowpark import Session
+        _local_session_cache = Session.builder.config(
+            "connection_name", _LOCAL_CONNECTION_NAME
+        ).create()
+        logger.info(
+            "[snowflake_service] Sessão local criada via conexão '%s'.",
+            _LOCAL_CONNECTION_NAME,
+        )
+        return _local_session_cache
     except Exception as exc:
-        logger.warning(
-            "[snowflake_service] Falha ao obter sessão Snowflake: %s", exc
+        logger.error(
+            "[snowflake_service] FALHA ao criar sessão local.\n"
+            "  connection_name: %s\n"
+            "  config_file: ~/.snowflake/connections.toml\n"
+            "  erro: %s\n"
+            "  tipo: %s\n"
+            "  Possíveis causas:\n"
+            "    - Conexão '%s' não existe em connections.toml\n"
+            "    - Credencial expirada ou inválida (token/password)\n"
+            "    - Account name incorreto\n"
+            "    - Rede/firewall bloqueando acesso ao Snowflake\n"
+            "    - snowflake-snowpark-python não instalado",
+            _LOCAL_CONNECTION_NAME, exc, type(exc).__name__,
+            _LOCAL_CONNECTION_NAME,
         )
         return None
 
@@ -307,15 +336,13 @@ def get_connection_info() -> dict:
         "current_warehouse":  None,
     }
 
-    if not is_running_in_snowflake():
+    session = get_snowflake_session()
+    if session is None:
         return info
 
     info["is_snowflake"] = True
 
     try:
-        session = get_snowflake_session()
-        if session is None:
-            return info
 
         row = session.sql(
             """

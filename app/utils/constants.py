@@ -7,6 +7,17 @@ status possíveis de envio, perfis de usuário, cores da identidade visual
 e parâmetros de configuração do portal.
 """
 
+import os
+
+# ---------------------------------------------------------------------------
+# Ambiente de execução
+# ---------------------------------------------------------------------------
+# APP_ENV controla funcionalidades exclusivas de desenvolvimento/teste.
+# Valores: "dev" | "test" | "local" | "production"
+# Default: "dev" (desenvolvimento local é o cenário mais comum).
+# Em produção, definir APP_ENV=production para ocultar ferramentas de teste.
+APP_ENV: str = os.environ.get("APP_ENV", "dev")
+
 # ---------------------------------------------------------------------------
 # Mapeamento de colunas: nome canônico → variantes aceitas no arquivo enviado
 # ---------------------------------------------------------------------------

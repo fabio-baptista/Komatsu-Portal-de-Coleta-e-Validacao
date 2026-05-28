@@ -15,6 +15,7 @@ from components.tables import errors_table
 from utils.session_state import get_origin_page, get_session_errors
 from utils.file_reader import build_error_report
 from services.mock_data_service import get_mock_validation_errors, get_mock_upload_by_id
+from utils.streamlit_compat import safe_rerun
 
 # ---------------------------------------------------------------------------
 # Resolução dinâmica do contexto (upload_id vem do session_state)
@@ -225,7 +226,7 @@ def _render_download_and_note(errors_df: pd.DataFrame, ctx: dict) -> None:
 
         if st.button(back_label, key="btn_back_history", use_container_width=True):
             st.session_state.page = back_page
-            st.rerun()
+            safe_rerun()
 
     st.markdown(
         """
@@ -278,7 +279,7 @@ def render() -> None:
         with col_back:
             if st.button("← Voltar para Meus Envios", key="btn_back_no_errors_id", use_container_width=True):
                 st.session_state.page = "history"
-                st.rerun()
+                safe_rerun()
         return
 
     ctx       = _get_upload_context(upload_id)

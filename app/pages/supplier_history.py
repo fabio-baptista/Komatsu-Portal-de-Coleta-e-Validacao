@@ -13,6 +13,7 @@ from components.cards import metric_card, render_cards_row
 from services.upload_service import UploadRecord, can_cancel, get_supplier_uploads
 from services.mock_data_service import get_current_open_window
 from utils.session_state import navigate_to, cancel_upload
+from utils.streamlit_compat import safe_rerun
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +206,7 @@ def _render_cancel_section(records: list[UploadRecord]) -> None:
                     cancelled_by= user_email,
                 )
                 st.session_state.just_cancelled_upload_id = record.upload_id
-                st.rerun()
+                safe_rerun()
 
     st.markdown(
         """
@@ -266,7 +267,7 @@ def _render_action_buttons(records: list[UploadRecord]) -> None:
                 use_container_width=True,
             ):
                 navigate_to("errors", upload_id=record.upload_id, origin="history")
-                st.rerun()
+                safe_rerun()
 
 
 def _render_detail_buttons(records: list[UploadRecord]) -> None:
@@ -307,7 +308,7 @@ def _render_detail_buttons(records: list[UploadRecord]) -> None:
                     upload_id=record.upload_id,
                     origin="history",
                 )
-                st.rerun()
+                safe_rerun()
 
 
 # ---------------------------------------------------------------------------
