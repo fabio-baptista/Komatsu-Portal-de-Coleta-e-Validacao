@@ -13,33 +13,33 @@ import streamlit as st
 
 from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
-from services.validation_service import ValidationResult, validate_forecast
-from services.forecast_service import NormalizationResult, normalize_forecast
-from services.upload_service import persist_upload_batch, persist_validation_errors, persist_validated_forecast
+from services.validation_service import ValidationResult
+from services.forecast_service import NormalizationResult
+from services.upload_service import persist_upload_batch, persist_validation_errors
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
 from utils.logger import get_logger
+from utils.constants import DEFAULT_REPORT_TYPE, get_report_type_config
 from utils.session_state import register_upload, register_validated_forecast
 from utils.streamlit_compat import safe_rerun
 
 _logger = get_logger(__name__)
 
-# Caminhos oficiais dos templates
-_TEMPLATE_PATH      = Path(__file__).parent.parent / "templates" / "template_forecast.xlsx"
-_TEMPLATE_CSV_PATH  = Path(__file__).parent.parent / "templates" / "template_forecast.csv"
+# ---------------------------------------------------------------------------
+# Configuração do tipo de relatório ativo (via registry)
+# ---------------------------------------------------------------------------
+_report_config = get_report_type_config(DEFAULT_REPORT_TYPE)
+
+# Caminhos oficiais dos templates (derivados do registry)
+_TEMPLATE_PATH      = Path(__file__).parent.parent / "templates" / _report_config["template_xlsx"]
+_TEMPLATE_CSV_PATH  = Path(__file__).parent.parent / "templates" / _report_config["template_csv"]
 
 # Colunas esperadas no template (exibidas ao fornecedor)
-_EXPECTED_COLUMNS: list[str] = [
-    "Data_Envio",
-    "Distribuidor_Nome",
-    "Cidade_Filial",
-    "NFMAT",
-    "MATERIAL",
-    "Descrição",
-    "Ranking_Nacional",
-    "Qtd",
-    "Data_recebimento",
-    "Observacoes",
-]
+_EXPECTED_COLUMNS: list[str] = _report_config["expected_columns"]
+
+# Funções de validação, normalização e persistência (do registry)
+_validate_file     = _report_config["validator"]
+_normalize_file    = _report_config["normalizer"]
+_persist_trusted   = _report_config["persist_trusted"]
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +511,7 @@ def render() -> None:
     already_registered = st.session_state.get("last_processed_file") == file_key
 
     with st.spinner("Validando arquivo..."):
-        result = validate_forecast(df, supplier_name=supplier_name)
+        result = _validate_file(df, supplier_name=supplier_name)
 
     if result.is_valid:
         _logger.info(
@@ -519,7 +519,7 @@ def render() -> None:
             supplier_id, file_name, result.summary.get("total_rows", 0),
         )
         # Normalização para extrair período e obter staging_dataframe
-        norm_result = normalize_forecast(
+        norm_result = _normalize_file(
             normalized_df=result.normalized_dataframe,
             supplier_id=supplier_id,
             supplier_name=supplier_name,
@@ -540,7 +540,7 @@ def render() -> None:
                 period = period_raw
         else:
             period = period_raw
-        report_type = "Forecast DB"
+        report_type = DEFAULT_REPORT_TYPE
 
         if not already_registered:
             # Persistir no Snowflake primeiro — fonte de verdade
@@ -598,7 +598,7 @@ def render() -> None:
             # Persistir linhas válidas em TRUSTED.FORECAST_VALIDATED (Snowflake)
             # Usa sf_version (versão real do Snowflake) — não a versão do session_state
             staging_df["upload_version"] = sf_version
-            trusted_count = persist_validated_forecast(
+            trusted_count = _persist_trusted(
                 upload_id=upload_id_final,
                 supplier_id=supplier_id,
                 supplier_name=supplier_name,
@@ -631,7 +631,7 @@ def render() -> None:
         )
         if not already_registered:
             period      = _extract_period_from_df(df)
-            report_type = "Forecast DB"
+            report_type = DEFAULT_REPORT_TYPE
             errors_list = result.errors_dataframe.to_dict("records")
 
             # Persistir upload inválido no Snowflake

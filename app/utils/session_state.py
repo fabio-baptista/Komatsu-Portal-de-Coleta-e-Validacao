@@ -230,7 +230,7 @@ def register_upload(
     status:       str,
     valid_rows:   int,
     invalid_rows: int,
-    report_type:  str = "Forecast DB",
+    report_type:  str = "Forecast DB",  # DEFAULT_REPORT_TYPE value; avoid circular import
     errors:       Optional[list[dict]] = None,
     uploaded_by:  str = "",
 ) -> str:

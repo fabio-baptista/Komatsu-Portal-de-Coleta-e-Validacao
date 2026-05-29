@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS CONTROL.upload_batches (
     cancelled_by        VARCHAR(255)
         COMMENT 'E-mail do usuário que realizou o cancelamento. NULL se não cancelado.',
 
-    cancel_reason       VARCHAR(1000)
+    cancellation_reason VARCHAR(500)
         COMMENT 'Motivo informado para o cancelamento. Texto livre, opcional.',
 
     source_system       VARCHAR(100)    DEFAULT 'portal_web'

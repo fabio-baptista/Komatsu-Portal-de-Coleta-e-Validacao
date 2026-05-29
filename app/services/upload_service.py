@@ -17,6 +17,7 @@ from services.mock_data_service import (
     get_mock_upload_by_id,
     get_current_open_window,
 )
+from utils.constants import DEFAULT_REPORT_TYPE
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ class UploadRecord:
     invalid_rows: int
     supplier_id:  str    # vem do session_state, nunca da planilha
     is_active:    bool = False   # True apenas para o upload VALID vigente da chave
-    report_type:  str = "Forecast DB"
+    report_type:  str = DEFAULT_REPORT_TYPE
 
 
 @dataclass
@@ -100,7 +101,7 @@ def _dict_to_record(d: dict) -> UploadRecord:
         invalid_rows= d["invalid_rows"],
         supplier_id=  d["supplier_id"],
         is_active=    is_active,
-        report_type=  d.get("report_type", "Forecast DB"),
+        report_type=  d.get("report_type", DEFAULT_REPORT_TYPE),
     )
 
 
@@ -110,7 +111,7 @@ def _dict_to_record(d: dict) -> UploadRecord:
 
 _UPLOAD_DETAIL_EXTRA: dict[str, dict] = {
     "UP-002": {
-        "report_type":  "Forecast DB",
+        "report_type":  DEFAULT_REPORT_TYPE,
         "uploaded_by":  "joao.vianmaq@email.com",
         "target_layer": "TRUSTED.forecast_validated",
         "is_active":    True,
@@ -637,18 +638,6 @@ def can_cancel(record: UploadRecord) -> bool:
     return False
 
 
-def simulate_cancel(upload_id: str) -> str:
-    """
-    Simula o cancelamento lógico de um envio.
-    Não remove dados. Retorna mensagem informativa.
-    Em produção, atualizará o status no Snowflake para 'CANCELLED'.
-    """
-    return (
-        f"Cancelamento lógico simulado para {upload_id}. "
-        "Em produção, o registro será marcado como CANCELLED no Snowflake."
-    )
-
-
 def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
     """
     Retorna o detalhe completo de um upload pelo seu ID.
@@ -723,7 +712,7 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
             supplier_name=     session_rec.get("supplier_name", "—"),
             supplier_id=       session_rec.get("supplier_id", "—"),
             file_name=         session_rec.get("file_name", "—"),
-            report_type=       session_rec.get("report_type", "Forecast DB"),
+            report_type=       session_rec.get("report_type", DEFAULT_REPORT_TYPE),
             period=            session_rec.get("period", "—"),
             version=           session_rec.get("version", 1),
             status=            session_rec.get("status", "—"),
@@ -750,7 +739,7 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
         supplier_name=     raw["supplier_name"],
         supplier_id=       raw["supplier_id"],
         file_name=         raw["file_name"],
-        report_type=       extra.get("report_type", "Forecast DB"),
+        report_type=       extra.get("report_type", DEFAULT_REPORT_TYPE),
         period=            raw["period"],
         version=           raw["version"],
         status=            raw["status"],
@@ -790,7 +779,7 @@ def persist_upload_batch(
     valid_rows: int,
     invalid_rows: int,
     uploaded_by: str,
-    report_type: str = "Forecast DB",
+    report_type: str = DEFAULT_REPORT_TYPE,
     window_id: str | None = None,
 ) -> dict | None:
     """

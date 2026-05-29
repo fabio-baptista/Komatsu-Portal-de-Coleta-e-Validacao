@@ -74,3 +74,111 @@ USER_ROLES = {
 # Para teste funcional (comportamento real), manter False.
 # Para apresentação/demo com dados pré-carregados, trocar para True.
 DEMO_MODE: bool = False
+
+# ---------------------------------------------------------------------------
+# Tipo de relatório padrão
+# ---------------------------------------------------------------------------
+# Valor usado como REPORT_TYPE em CONTROL.UPLOAD_BATCHES e SUBMISSION_WINDOWS.
+# Centralizado aqui para facilitar futura evolução multi-report.
+DEFAULT_REPORT_TYPE: str = "Forecast DB"
+
+
+# ---------------------------------------------------------------------------
+# Registry de tipos de relatório
+# ---------------------------------------------------------------------------
+# Cada tipo de relatório define: template, colunas, tabela destino e flag de habilitação.
+# Funções (validator, normalizer, persist) são resolvidas em get_report_type_config()
+# via lazy import para evitar dependência circular.
+#
+# Para adicionar um novo tipo no futuro:
+#   1. Criar entrada no REPORT_TYPE_REGISTRY com enabled=False até implementar.
+#   2. Criar validator, normalizer e persist function no respectivo service.
+#   3. Criar template na pasta templates/.
+#   4. Criar tabela TRUSTED correspondente.
+#   5. Alterar get_report_type_config() para incluir os callables.
+#   6. Habilitar com enabled=True.
+# ---------------------------------------------------------------------------
+
+REPORT_TYPE_REGISTRY: dict[str, dict] = {
+    "Forecast DB": {
+        "key": "forecast",
+        "label": "Forecast DB",
+        "template_xlsx": "template_forecast.xlsx",
+        "template_csv": "template_forecast.csv",
+        "expected_columns": [
+            "Data_Envio",
+            "Distribuidor_Nome",
+            "Cidade_Filial",
+            "NFMAT",
+            "MATERIAL",
+            "Descrição",
+            "Ranking_Nacional",
+            "Qtd",
+            "Data_recebimento",
+            "Observacoes",
+        ],
+        "column_aliases": COLUMN_ALIASES,
+        "required_columns": REQUIRED_COLUMNS,
+        "trusted_table": "TRUSTED.FORECAST_VALIDATED",
+        "enabled": True,
+    },
+    # -------------------------------------------------------------------------
+    # Evolução futura — tipos previstos mas NÃO implementados:
+    # -------------------------------------------------------------------------
+    # "Vendas": {
+    #     "key": "sales",
+    #     "label": "Vendas",
+    #     "template_xlsx": "template_vendas.xlsx",
+    #     "template_csv": "template_vendas.csv",
+    #     "expected_columns": [...],
+    #     "column_aliases": {...},
+    #     "required_columns": [...],
+    #     "trusted_table": "TRUSTED.SALES_VALIDATED",
+    #     "enabled": False,
+    # },
+    # "Vendas Perdidas": {
+    #     "key": "lost_sales",
+    #     "label": "Vendas Perdidas",
+    #     "trusted_table": "TRUSTED.LOST_SALES_VALIDATED",
+    #     "enabled": False,
+    # },
+    # "Estoque": {
+    #     "key": "inventory",
+    #     "label": "Estoque",
+    #     "trusted_table": "TRUSTED.INVENTORY_VALIDATED",
+    #     "enabled": False,
+    # },
+}
+
+
+def get_report_type_config(report_type: str = DEFAULT_REPORT_TYPE) -> dict:
+    """
+    Retorna a configuração completa para um tipo de relatório, incluindo
+    referências a funções (validator, normalizer, persist) via lazy import.
+
+    Raises:
+        ValueError se o tipo não existir ou não estiver habilitado.
+
+    Uso:
+        config = get_report_type_config("Forecast DB")
+        result = config["validator"](df, supplier_name=name)
+        norm   = config["normalizer"](...)
+        count  = config["persist_trusted"](...)
+    """
+    config = REPORT_TYPE_REGISTRY.get(report_type)
+    if config is None:
+        raise ValueError(f"Tipo de relatório '{report_type}' não registrado.")
+    if not config.get("enabled"):
+        raise ValueError(f"Tipo de relatório '{report_type}' não está habilitado.")
+
+    # Lazy imports para evitar dependência circular
+    from services.validation_service import validate_forecast
+    from services.forecast_service import normalize_forecast
+    from services.upload_service import persist_validated_forecast
+
+    return {
+        **config,
+        "validator": validate_forecast,
+        "normalizer": normalize_forecast,
+        "persist_trusted": persist_validated_forecast,
+    }
