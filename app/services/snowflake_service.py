@@ -28,7 +28,7 @@ _local_session_cache = None
 
 # Nome da conexão usada localmente (connections.toml)
 _LOCAL_CONNECTION_NAME = os.environ.get(
-    "SNOWFLAKE_CONNECTION_NAME", "KOMATSU_BRAZIL_INTERNATIONAL_PAT"
+    "SNOWFLAKE_CONNECTION_NAME", "a8939837780371-komatsu_brazil_international"
 )
 
 

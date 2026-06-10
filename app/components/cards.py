@@ -48,19 +48,21 @@ def navy_card(title: str, body: str, version: str = "") -> str:
     """
     version_block = ""
     if version:
-        version_block = f"""
-        <div class="kmt-navy-card-footer">
-            <p class="kmt-navy-card-version-label">Versão do Sistema</p>
-            <p class="kmt-navy-card-version">{version}</p>
-        </div>"""
-    return f"""
-    <div class="kmt-card kmt-card--navy">
-        <h4 class="kmt-navy-card-title">
-            <span class="kmt-icon-yellow">⚠</span>&nbsp;{title}
-        </h4>
-        <p class="kmt-navy-card-body">{body}</p>
-        {version_block}
-    </div>"""
+        version_block = (
+            '<div class="kmt-navy-card-footer">'
+            '<p class="kmt-navy-card-version-label">VERSÃO DO SISTEMA</p>'
+            f'<p class="kmt-navy-card-version">{version}</p>'
+            '</div>'
+        )
+    return (
+        '<div class="kmt-card kmt-card--navy">'
+        '<h4 class="kmt-navy-card-title">'
+        f'<span class="kmt-icon-yellow">⚠</span>&nbsp;{title}'
+        '</h4>'
+        f'<p class="kmt-navy-card-body">{body}</p>'
+        f'{version_block}'
+        '</div>'
+    )
 
 
 def render_cards_row(cards_html: list[str]) -> None:

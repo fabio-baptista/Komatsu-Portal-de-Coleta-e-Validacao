@@ -52,16 +52,20 @@ _USERS: list[dict] = [
 
 _SUBMISSION_WINDOWS: list[dict] = [
     {
-        "period":       "2026-05",
-        "label":        "Maio/2026",
-        "open":         True,
-        "closes_at":    "05/05/2026",
-        "progress_pct": 85,
-    },
-    {
         "period":       "2026-06",
         "label":        "Junho/2026",
+        "open":         True,
+        "start_date":   "01/06/2026",
+        "end_date":     "30/06/2026",
+        "closes_at":    "30/06/2026",
+        "progress_pct": 30,
+    },
+    {
+        "period":       "2026-07",
+        "label":        "Julho/2026",
         "open":         False,
+        "start_date":   "01/07/2026",
+        "end_date":     "31/07/2026",
         "closes_at":    "—",
         "progress_pct": 0,
     },
@@ -372,30 +376,9 @@ def get_mock_submission_windows() -> list[dict]:
 
 
 def get_current_open_window() -> Optional[dict]:
-    """Retorna a janela aberta. Usa CONTROL.SUBMISSION_WINDOWS se disponivel, senao mock."""
-    try:
-        from services.snowflake_service import execute_query, is_running_in_snowflake
-        if is_running_in_snowflake():
-            df = execute_query(
-                "SELECT * FROM KBI_DATA_JOURNEY_DEV_DB.CONTROL.SUBMISSION_WINDOWS WHERE IS_OPEN = TRUE LIMIT 1"
-            )
-            if df is not None and not df.empty:
-                row = df.iloc[0].to_dict()
-                return {
-                    "window_id":  str(row["WINDOW_ID"]),
-                    "period":     str(row["REFERENCE_PERIOD"]),
-                    "label":      f"{str(row['REPORT_TYPE'])} — {str(row['REFERENCE_PERIOD'])}",
-                    "start_date": str(row["START_DATE"]),
-                    "end_date":   str(row["END_DATE"]),
-                    "is_open":    True,
-                }
-            return None
-    except Exception:
-        pass
-    for w in _SUBMISSION_WINDOWS:
-        if w["open"]:
-            return w
-    return None
+    """Retorna a janela aberta. Delega para submission_window_service."""
+    from services.submission_window_service import get_current_open_window as _real
+    return _real()
 
 
 def get_mock_suppliers() -> list[dict]:

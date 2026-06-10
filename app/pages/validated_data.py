@@ -97,19 +97,15 @@ def _render_page_header() -> None:
 
 def _render_demo_banner() -> None:
     st.markdown(
-        """
-        <div class="kmt-alert kmt-alert--info" style="margin-bottom:12px;">
-            <div class="kmt-alert-icon">💡</div>
-            <div>
-                <p class="kmt-alert-title">Dados de demonstração</p>
-                <p class="kmt-alert-body">
-                    Nenhum upload real foi realizado nesta sessão.
-                    Os dados abaixo são de demonstração e serão substituídos
-                    automaticamente após os fornecedores enviarem forecasts.
-                </p>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-alert kmt-alert--info" style="margin-bottom:12px;">'
+        '<div class="kmt-alert-icon">💡</div>'
+        '<div>'
+        '<p class="kmt-alert-title">Dados de demonstração</p>'
+        '<p class="kmt-alert-body">'
+        'Nenhum upload real foi realizado nesta sessão. '
+        'Os dados abaixo são de demonstração e serão substituídos '
+        'automaticamente após os fornecedores enviarem forecasts.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -251,56 +247,44 @@ def _render_table(rows: list[dict]) -> str:
     for r in rows:
         ver = version_badge(r["version"]) if isinstance(r["version"], int) else r["version"]
 
-        table_rows += f"""
-        <tr class="kmt-table-row">
-            <td class="kmt-table-cell"
-                style="font-weight:700;color:#002B5C;">{r['supplier']}</td>
-            <td class="kmt-table-cell"
-                style="color:#374151;">{r['branch']}</td>
-            <td class="kmt-table-cell"
-                style="font-family:monospace;font-size:11px;
-                       color:#6B7280;">{r['material_code']}</td>
-            <td class="kmt-table-cell"
-                style="color:#374151;font-size:12px;">{r['description']}</td>
-            <td class="kmt-table-cell"
-                style="color:#2563EB;font-weight:700;">{r['period']}</td>
-            <td class="kmt-table-cell kmt-td-center"
-                style="font-weight:700;color:#15803D;">{r['qty']}</td>
-            <td class="kmt-table-cell kmt-td-center">{ver}</td>
-            <td class="kmt-table-cell kmt-td-date">{r['processed_at']}</td>
-            <td class="kmt-table-cell"
-                style="font-size:11px;font-family:monospace;color:#6B7280;
-                       max-width:180px;overflow:hidden;text-overflow:ellipsis;
-                       white-space:nowrap;" title="{r['source_file']}">
-                {r['source_file']}
-            </td>
-        </tr>"""
+        table_rows += (
+            '<tr class="kmt-table-row">'
+            f'<td class="kmt-table-cell" style="font-weight:700;color:#002B5C;">{r["supplier"]}</td>'
+            f'<td class="kmt-table-cell" style="color:#374151;">{r["branch"]}</td>'
+            f'<td class="kmt-table-cell" style="font-family:monospace;font-size:11px;color:#6B7280;">{r["material_code"]}</td>'
+            f'<td class="kmt-table-cell" style="color:#374151;font-size:12px;">{r["description"]}</td>'
+            f'<td class="kmt-table-cell" style="color:#2563EB;font-weight:700;">{r["period"]}</td>'
+            f'<td class="kmt-table-cell kmt-td-center" style="font-weight:700;color:#15803D;">{r["qty"]}</td>'
+            f'<td class="kmt-table-cell kmt-td-center">{ver}</td>'
+            f'<td class="kmt-table-cell kmt-td-date">{r["processed_at"]}</td>'
+            f'<td class="kmt-table-cell" style="font-size:11px;font-family:monospace;color:#6B7280;'
+            f'max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+            f'title="{r["source_file"]}">{r["source_file"]}</td>'
+            '</tr>'
+        )
 
-    return f"""
-    <div class="kmt-table-container">
-        <div class="kmt-table-header">
-            <span class="kmt-table-title">Forecasts Validados</span>
-            <span style="font-size:11px;color:#9CA3AF;">{len(rows)} registro(s)</span>
-        </div>
-        <div class="kmt-table-scroll">
-            <table class="kmt-table">
-                <thead>
-                    <tr class="kmt-thead-row">
-                        <th class="kmt-th">Fornecedor</th>
-                        <th class="kmt-th">Filial</th>
-                        <th class="kmt-th">Cód. Material</th>
-                        <th class="kmt-th">Descrição</th>
-                        <th class="kmt-th">Período</th>
-                        <th class="kmt-th kmt-th-center">Qtd.</th>
-                        <th class="kmt-th kmt-th-center">Versão</th>
-                        <th class="kmt-th">Data de Envio</th>
-                        <th class="kmt-th">Arquivo</th>
-                    </tr>
-                </thead>
-                <tbody>{table_rows}</tbody>
-            </table>
-        </div>
-    </div>"""
+    return (
+        '<div class="kmt-table-container">'
+        '<div class="kmt-table-header">'
+        '<span class="kmt-table-title">Forecasts Validados</span>'
+        f'<span style="font-size:11px;color:#9CA3AF;">{len(rows)} registro(s)</span>'
+        '</div>'
+        '<div class="kmt-table-scroll">'
+        '<table class="kmt-table">'
+        '<thead><tr class="kmt-thead-row">'
+        '<th class="kmt-th">Fornecedor</th>'
+        '<th class="kmt-th">Filial</th>'
+        '<th class="kmt-th">Cód. Material</th>'
+        '<th class="kmt-th">Descrição</th>'
+        '<th class="kmt-th">Período</th>'
+        '<th class="kmt-th kmt-th-center">Qtd.</th>'
+        '<th class="kmt-th kmt-th-center">Versão</th>'
+        '<th class="kmt-th">Data de Envio</th>'
+        '<th class="kmt-th">Arquivo</th>'
+        '</tr></thead>'
+        f'<tbody>{table_rows}</tbody>'
+        '</table></div></div>'
+    )
 
 
 def _render_export(rows: list[dict]) -> None:
@@ -392,6 +376,15 @@ def render() -> None:
     3. Aplica filtros
     4. Renderiza cards, exportação e tabela
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        _logger.exception("Erro ao renderizar Forecasts Validados: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna da tela de forecasts validados."""
     _render_page_header()
 
     # --- Fonte de dados (prioridade: Snowflake → sessão → mock) ---

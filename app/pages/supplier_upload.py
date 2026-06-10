@@ -13,6 +13,7 @@ import streamlit as st
 
 from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
+from services.mock_data_service import get_current_open_window
 from services.validation_service import ValidationResult
 from services.forecast_service import NormalizationResult
 from services.upload_service import persist_upload_batch, persist_validation_errors
@@ -49,15 +50,12 @@ _persist_trusted   = _report_config["persist_trusted"]
 def _render_template_section() -> None:
     """Seção de download dos templates oficiais (XLSX e CSV)."""
     st.markdown(
-        """
-        <div class="kmt-section">
-            <p class="kmt-section-title">Baixar template oficial</p>
-            <p class="kmt-section-subtitle">
-                Use o template abaixo como base para preencher os dados de forecast.
-                Não altere os nomes das colunas.
-            </p>
-        </div>
-        """,
+        '<div class="kmt-section">'
+        '<p class="kmt-section-title">Baixar template oficial</p>'
+        '<p class="kmt-section-subtitle">'
+        'Use o template abaixo como base para preencher os dados de forecast. '
+        'Não altere os nomes das colunas.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -79,12 +77,9 @@ def _render_template_section() -> None:
                     )
             else:
                 st.markdown(
-                    """
-                    <div class="kmt-alert kmt-alert--info" style="font-size:11px;padding:8px 12px;">
-                        <p style="margin:0;">Template XLSX não encontrado.<br>
-                        Entre em contato com a Komatsu.</p>
-                    </div>
-                    """,
+                    '<div class="kmt-alert kmt-alert--info" style="font-size:11px;padding:8px 12px;">'
+                    '<p style="margin:0;">Template XLSX não encontrado.<br>'
+                    'Entre em contato com a Komatsu.</p></div>',
                     unsafe_allow_html=True,
                 )
 
@@ -100,38 +95,28 @@ def _render_template_section() -> None:
                     )
             else:
                 st.markdown(
-                    """
-                    <div class="kmt-alert kmt-alert--info" style="font-size:11px;padding:8px 12px;">
-                        <p style="margin:0;">Template CSV não encontrado.<br>
-                        Entre em contato com a Komatsu.</p>
-                    </div>
-                    """,
+                    '<div class="kmt-alert kmt-alert--info" style="font-size:11px;padding:8px 12px;">'
+                    '<p style="margin:0;">Template CSV não encontrado.<br>'
+                    'Entre em contato com a Komatsu.</p></div>',
                     unsafe_allow_html=True,
                 )
 
         with col_info:
             st.markdown(
-                """
-                <div style="padding:10px 0 0 4px;font-size:12px;color:#9CA3AF;">
-                    Preencha o template com os dados do período e envie abaixo.
-                    Não altere os nomes das colunas.
-                </div>
-                """,
+                '<div style="padding:10px 0 0 4px;font-size:12px;color:#9CA3AF;">'
+                'Preencha o template com os dados do período e envie abaixo. '
+                'Não altere os nomes das colunas.</div>',
                 unsafe_allow_html=True,
             )
     else:
         st.markdown(
-            """
-            <div class="kmt-alert kmt-alert--info">
-                <div class="kmt-alert-icon">ℹ️</div>
-                <div>
-                    <p class="kmt-alert-title">Template oficial não encontrado</p>
-                    <p class="kmt-alert-body">
-                        Entre em contato com a Komatsu para validar o modelo de preenchimento.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info">'
+            '<div class="kmt-alert-icon">ℹ️</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Template oficial não encontrado</p>'
+            '<p class="kmt-alert-body">'
+            'Entre em contato com a Komatsu para validar o modelo de preenchimento.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
 
@@ -158,15 +143,12 @@ def _render_expected_columns() -> None:
     )
 
     st.markdown(
-        f"""
-        <div class="kmt-card" style="margin-bottom:20px;">
-            <p class="kmt-card-label" style="margin-bottom:12px;">Colunas esperadas</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-                <div>{left_html}</div>
-                <div>{right_html}</div>
-            </div>
-        </div>
-        """,
+        f'<div class="kmt-card" style="margin-bottom:20px;">'
+        '<p class="kmt-card-label" style="margin-bottom:12px;">Colunas esperadas</p>'
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">'
+        f'<div>{left_html}</div>'
+        f'<div>{right_html}</div>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -228,18 +210,14 @@ def _render_upload_area() -> tuple[pd.DataFrame | None, str | None, str | None]:
 def _render_file_ready_prompt(file_name: str, n_rows: int) -> None:
     """Exibe informações do arquivo selecionado e o botão de validação."""
     st.markdown(
-        f"""
-        <div class="kmt-alert kmt-alert--info" style="margin-top:12px;">
-            <div class="kmt-alert-icon">📄</div>
-            <div>
-                <p class="kmt-alert-title">Arquivo selecionado</p>
-                <p class="kmt-alert-body">
-                    <strong>{file_name}</strong> · {n_rows} linha(s) detectada(s).
-                    Clique em <strong>Validar arquivo</strong> para iniciar a verificação.
-                </p>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-alert kmt-alert--info" style="margin-top:12px;">'
+        '<div class="kmt-alert-icon">📄</div>'
+        '<div>'
+        '<p class="kmt-alert-title">Arquivo selecionado</p>'
+        '<p class="kmt-alert-body">'
+        f'<strong>{file_name}</strong> · {n_rows} linha(s) detectada(s). '
+        'Clique em <strong>Validar arquivo</strong> para iniciar a verificação.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -259,18 +237,14 @@ def _render_file_ready_prompt(file_name: str, n_rows: int) -> None:
 def _render_success_supplier(result: ValidationResult) -> None:
     """Resultado quando o arquivo é válido — sem termos técnicos internos."""
     st.markdown(
-        """
-        <div class="kmt-alert kmt-alert--success">
-            <div class="kmt-alert-icon">✅</div>
-            <div>
-                <p class="kmt-alert-title">Arquivo válido para processamento.</p>
-                <p class="kmt-alert-body">
-                    Todas as validações foram aprovadas.
-                    O envio foi registrado e está disponível no histórico.
-                </p>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-alert kmt-alert--success">'
+        '<div class="kmt-alert-icon">✅</div>'
+        '<div>'
+        '<p class="kmt-alert-title">Arquivo válido para processamento.</p>'
+        '<p class="kmt-alert-body">'
+        'Todas as validações foram aprovadas. '
+        'O envio foi registrado e está disponível no histórico.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -303,20 +277,14 @@ def _render_errors_supplier(result: ValidationResult, file_name: str) -> None:
     n_errors = len(result.errors_dataframe)
 
     st.markdown(
-        f"""
-        <div class="kmt-alert kmt-alert--error">
-            <div class="kmt-alert-icon">❌</div>
-            <div>
-                <p class="kmt-alert-title">
-                    Arquivo inválido — {n_errors} erro(s) encontrado(s)
-                </p>
-                <p class="kmt-alert-body">
-                    Corrija os erros listados abaixo no arquivo original e reenvie.
-                    Não é possível editar os dados diretamente no portal.
-                </p>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-alert kmt-alert--error">'
+        '<div class="kmt-alert-icon">❌</div>'
+        '<div>'
+        f'<p class="kmt-alert-title">Arquivo inválido — {n_errors} erro(s) encontrado(s)</p>'
+        '<p class="kmt-alert-body">'
+        'Corrija os erros listados abaixo no arquivo original e reenvie. '
+        'Não é possível editar os dados diretamente no portal.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -425,22 +393,37 @@ def render() -> None:
 
     Chamado por streamlit_app.py quando page == 'upload'.
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        _logger.exception("Erro ao renderizar Upload: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna da tela de upload."""
     # --- Seção 1: Template ---------------------------------------------------
     _render_template_section()
 
     st.markdown('<div class="kmt-divider"></div>', unsafe_allow_html=True)
 
+    # --- Verificar janela de envio ANTES de permitir upload -------------------
+    window = get_current_open_window()
+    if not window:
+        st.warning(
+            "A janela de envio esta fechada no momento. "
+            "Entre em contato com a Komatsu."
+        )
+        return
+
     # --- Seção 2: Upload -----------------------------------------------------
     st.markdown(
-        """
-        <div class="kmt-section" style="margin-top:8px;">
-            <p class="kmt-section-title">Enviar arquivo de forecast</p>
-            <p class="kmt-section-subtitle">
-                Selecione um arquivo <strong>.xlsx</strong> ou <strong>.csv</strong>
-                preenchido com o template oficial.
-            </p>
-        </div>
-        """,
+        '<div class="kmt-section" style="margin-top:8px;">'
+        '<p class="kmt-section-title">Enviar arquivo de forecast</p>'
+        '<p class="kmt-section-subtitle">'
+        'Selecione um arquivo <strong>.xlsx</strong> ou <strong>.csv</strong> '
+        'preenchido com o template oficial.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -461,15 +444,12 @@ def render() -> None:
     # --- Erro de leitura -----------------------------------------------------
     if df is None and read_error:
         st.markdown(
-            f"""
-            <div class="kmt-alert kmt-alert--error">
-                <div class="kmt-alert-icon">⚠</div>
-                <div>
-                    <p class="kmt-alert-title">Erro ao ler o arquivo</p>
-                    <p class="kmt-alert-body">{read_error}</p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--error">'
+            '<div class="kmt-alert-icon">⚠</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Erro ao ler o arquivo</p>'
+            f'<p class="kmt-alert-body">{read_error}</p>'
+            '</div></div>',
             unsafe_allow_html=True,
         )
         return
@@ -518,7 +498,19 @@ def render() -> None:
             "Validação OK: supplier=%s, file=%s, rows=%d",
             supplier_id, file_name, result.summary.get("total_rows", 0),
         )
-        # Normalização para extrair período e obter staging_dataframe
+
+        # Determinar REFERENCE_PERIOD a partir da janela aberta (não da planilha)
+        window = get_current_open_window()
+        if not window:
+            st.error(
+                "A janela de envio está fechada. "
+                "Entre em contato com a Komatsu para verificar o calendário de coleta."
+            )
+            return
+        period = window["period"]  # Ex: "2026-05"
+        report_type = DEFAULT_REPORT_TYPE
+
+        # Normalização para obter staging_dataframe (FORECAST_PERIOD vem do arquivo)
         norm_result = _normalize_file(
             normalized_df=result.normalized_dataframe,
             supplier_id=supplier_id,
@@ -527,22 +519,12 @@ def render() -> None:
             upload_version=1,
             source_file_name=file_name,
         )
-        periods    = norm_result.summary.get("periods", [])
-        period_raw = periods[0] if periods else "—"
-        # Normalizar para YYYY-MM — get_admin_status_rows() compara neste formato.
-        # Sem isso, datas no formato "2026-05-01" não casam com o período "2026-05"
-        # da janela aberta e o fornecedor fica sempre como pendente no painel.
-        if period_raw != "—":
-            try:
-                _p = pd.to_datetime(period_raw, dayfirst=True, errors="coerce")
-                period = _p.strftime("%Y-%m") if not pd.isna(_p) else period_raw
-            except Exception:
-                period = period_raw
-        else:
-            period = period_raw
-        report_type = DEFAULT_REPORT_TYPE
 
         if not already_registered:
+            # Timestamp oficial do envio — fonte de verdade única para todas as telas
+            from datetime import datetime as _dt
+            _official_ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+
             # Persistir no Snowflake primeiro — fonte de verdade
             sf_result = persist_upload_batch(
                 supplier_id=supplier_id,
@@ -555,6 +537,8 @@ def render() -> None:
                 invalid_rows=0,
                 uploaded_by=supplier_email,
                 report_type=report_type,
+                window_id=window.get("window_id") if window.get("window_id") != "__MOCK__" else None,
+                uploaded_at=_official_ts,
             )
             if sf_result is None:
                 st.error(
@@ -597,7 +581,9 @@ def render() -> None:
 
             # Persistir linhas válidas em TRUSTED.FORECAST_VALIDATED (Snowflake)
             # Usa sf_version (versão real do Snowflake) — não a versão do session_state
+            # Usa _official_ts — mesmo timestamp do batch para consistência
             staging_df["upload_version"] = sf_version
+            staging_df["uploaded_at"] = _official_ts
             trusted_count = _persist_trusted(
                 upload_id=upload_id_final,
                 supplier_id=supplier_id,
@@ -630,9 +616,21 @@ def render() -> None:
             supplier_id, file_name, len(result.errors_dataframe),
         )
         if not already_registered:
-            period      = _extract_period_from_df(df)
+            # REFERENCE_PERIOD vem da janela aberta (não da planilha)
+            window = get_current_open_window()
+            if not window:
+                st.error(
+                    "A janela de envio está fechada. "
+                    "Entre em contato com a Komatsu para verificar o calendário de coleta."
+                )
+                return
+            period      = window["period"]
             report_type = DEFAULT_REPORT_TYPE
             errors_list = result.errors_dataframe.to_dict("records")
+
+            # Timestamp oficial do envio inválido
+            from datetime import datetime as _dt
+            _official_ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
 
             # Persistir upload inválido no Snowflake
             sf_result = persist_upload_batch(
@@ -646,6 +644,8 @@ def render() -> None:
                 invalid_rows=len(result.errors_dataframe),
                 uploaded_by=supplier_email,
                 report_type=report_type,
+                window_id=window.get("window_id") if window.get("window_id") != "__MOCK__" else None,
+                uploaded_at=_official_ts,
             )
             if sf_result is None:
                 st.error(

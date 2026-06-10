@@ -108,15 +108,12 @@ def _get_errors_df(upload_id: str) -> pd.DataFrame:
 
 def _render_page_header() -> None:
     st.markdown(
-        """
-        <div class="kmt-section">
-            <p class="kmt-section-title">Erros de Validação</p>
-            <p class="kmt-section-subtitle">
-                Consulte as inconsistências encontradas no arquivo
-                e baixe o relatório de correção.
-            </p>
-        </div>
-        """,
+        '<div class="kmt-section">'
+        '<p class="kmt-section-title">Erros de Validação</p>'
+        '<p class="kmt-section-subtitle">'
+        'Consulte as inconsistências encontradas no arquivo '
+        'e baixe o relatório de correção.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -126,68 +123,34 @@ def _render_upload_context(ctx: dict, n_errors: int) -> None:
     badge = status_badge(ctx["status"])
 
     st.markdown(
-        f"""
-        <div class="kmt-card" style="margin-bottom:20px;">
-            <p class="kmt-card-label" style="margin-bottom:14px;">Contexto do Envio</p>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);
-                        gap:12px 24px;">
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Upload ID
-                    </p>
-                    <p style="font-family:monospace;font-weight:700;
-                              color:#2563EB;margin:0;font-size:14px;">
-                        {ctx['upload_id']}
-                    </p>
-                </div>
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Arquivo
-                    </p>
-                    <p style="font-size:13px;font-weight:600;color:#002B5C;
-                              margin:0;word-break:break-all;">
-                        {ctx['file_name']}
-                    </p>
-                </div>
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Fornecedor
-                    </p>
-                    <p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;">
-                        {ctx['supplier']}
-                    </p>
-                </div>
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Período
-                    </p>
-                    <p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;">
-                        {ctx['period']}
-                    </p>
-                </div>
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Status
-                    </p>
-                    <p style="margin:0;">{badge}</p>
-                </div>
-                <div>
-                    <p style="font-size:10px;font-weight:700;color:#9CA3AF;
-                              text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">
-                        Total de Erros
-                    </p>
-                    <p style="font-size:18px;font-weight:700;color:#B91C1C;margin:0;">
-                        {n_errors}
-                    </p>
-                </div>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-card" style="margin-bottom:20px;">'
+        '<p class="kmt-card-label" style="margin-bottom:14px;">Contexto do Envio</p>'
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;">'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Upload ID</p>'
+        f'<p style="font-family:monospace;font-weight:700;color:#2563EB;margin:0;font-size:14px;">{ctx["upload_id"]}</p>'
+        '</div>'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Arquivo</p>'
+        f'<p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;word-break:break-all;">{ctx["file_name"]}</p>'
+        '</div>'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Fornecedor</p>'
+        f'<p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;">{ctx["supplier"]}</p>'
+        '</div>'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Período</p>'
+        f'<p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;">{ctx["period"]}</p>'
+        '</div>'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Status</p>'
+        f'<p style="margin:0;">{badge}</p>'
+        '</div>'
+        '<div>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Total de Erros</p>'
+        f'<p style="font-size:18px;font-weight:700;color:#B91C1C;margin:0;">{n_errors}</p>'
+        '</div>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -195,18 +158,14 @@ def _render_upload_context(ctx: dict, n_errors: int) -> None:
 def _render_error_alert() -> None:
     """Alerta visual em destaque."""
     st.markdown(
-        """
-        <div class="kmt-alert kmt-alert--error">
-            <div class="kmt-alert-icon">❌</div>
-            <div>
-                <p class="kmt-alert-title">Arquivo Inválido</p>
-                <p class="kmt-alert-body">
-                    Corrija os erros na planilha original e realize um novo envio.
-                    Não é possível editar os dados diretamente no portal.
-                </p>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-alert kmt-alert--error">'
+        '<div class="kmt-alert-icon">❌</div>'
+        '<div>'
+        '<p class="kmt-alert-title">Arquivo Inválido</p>'
+        '<p class="kmt-alert-body">'
+        'Corrija os erros na planilha original e realize um novo envio. '
+        'Não é possível editar os dados diretamente no portal.'
+        '</p></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -261,17 +220,13 @@ def _render_download_and_note(errors_df: pd.DataFrame, ctx: dict) -> None:
             safe_rerun()
 
     st.markdown(
-        """
-        <div style="margin-top:20px;padding:10px 16px;background:#F9FAFB;
-                    border-left:3px solid #E5E7EB;border-radius:4px;">
-            <p style="font-size:12px;color:#374151;margin:0 0 4px;font-weight:600;">
-                Baixe o relatório, corrija a planilha original e envie novamente.
-            </p>
-            <p style="font-size:11px;color:#9CA3AF;margin:0;">
-                O arquivo original enviado é preservado sem alterações.
-            </p>
-        </div>
-        """,
+        '<div style="margin-top:20px;padding:10px 16px;background:#F9FAFB;'
+        'border-left:3px solid #E5E7EB;border-radius:4px;">'
+        '<p style="font-size:12px;color:#374151;margin:0 0 4px;font-weight:600;">'
+        'Baixe o relatório, corrija a planilha original e envie novamente.</p>'
+        '<p style="font-size:11px;color:#9CA3AF;margin:0;">'
+        'O arquivo original enviado é preservado sem alterações.</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -286,6 +241,15 @@ def render() -> None:
     Chamado por streamlit_app.py quando page == 'errors'.
     O upload_id é lido do session_state (definido por navigate_to).
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        _logger.exception("Erro ao renderizar Erros de Validação: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna da tela de erros."""
     _render_page_header()
 
     upload_id = st.session_state.get("errors_upload_id")
@@ -293,17 +257,13 @@ def render() -> None:
     # Nenhum upload selecionado — mensagem amigável
     if not upload_id:
         st.markdown(
-            """
-            <div class="kmt-alert kmt-alert--info" style="margin-top:24px;">
-                <div class="kmt-alert-icon">ℹ</div>
-                <div>
-                    <p class="kmt-alert-title">Nenhum envio inválido selecionado</p>
-                    <p class="kmt-alert-body">
-                        Acesse <strong>Meus Envios</strong> e selecione um arquivo com erro para visualizar o relatório de correção.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:24px;">'
+            '<div class="kmt-alert-icon">ℹ</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Nenhum envio inválido selecionado</p>'
+            '<p class="kmt-alert-body">'
+            'Acesse <strong>Meus Envios</strong> e selecione um arquivo com erro para visualizar o relatório de correção.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
         st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
@@ -323,19 +283,15 @@ def render() -> None:
     # Nenhum erro encontrado para este upload
     if n_errors == 0:
         st.markdown(
-            """
-            <div class="kmt-alert kmt-alert--info" style="margin-top:24px;">
-                <div class="kmt-alert-icon">ℹ</div>
-                <div>
-                    <p class="kmt-alert-title">Nenhum erro encontrado para este envio</p>
-                    <p class="kmt-alert-body">
-                        Não há erros de validação registrados para este arquivo.
-                        Caso tenha enviado um novo arquivo corrigido, os erros do envio anterior
-                        não se aplicam mais.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:24px;">'
+            '<div class="kmt-alert-icon">ℹ</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Nenhum erro encontrado para este envio</p>'
+            '<p class="kmt-alert-body">'
+            'Não há erros de validação registrados para este arquivo. '
+            'Caso tenha enviado um novo arquivo corrigido, os erros do envio anterior '
+            'não se aplicam mais.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
         return

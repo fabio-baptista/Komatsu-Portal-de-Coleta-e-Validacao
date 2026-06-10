@@ -18,6 +18,7 @@ Em produção: leitura/escrita em TRUSTED.forecast_validated (ou equivalente).
 
 from dataclasses import dataclass
 from datetime import datetime
+import math
 from typing import Optional
 
 import pandas as pd
@@ -395,11 +396,14 @@ def get_validated_forecasts_from_snowflake() -> list[dict]:
         return []
 
     query = f"""
-        SELECT SUPPLIER_NAME, BRANCH, MATERIAL_CODE, MATERIAL_DESCRIPTION,
-               FORECAST_PERIOD, FORECAST_QUANTITY, UPLOAD_VERSION,
-               UPLOADED_AT, SOURCE_FILE_NAME
-        FROM {_DATABASE}.TRUSTED.FORECAST_VALIDATED
-        WHERE IS_ACTIVE = TRUE
+        SELECT fv.SUPPLIER_NAME, fv.BRANCH, fv.MATERIAL_CODE, fv.MATERIAL_DESCRIPTION,
+               fv.FORECAST_PERIOD, fv.FORECAST_QUANTITY, fv.UPLOAD_VERSION,
+               COALESCE(ub.UPLOADED_AT, fv.UPLOADED_AT) AS UPLOADED_AT,
+               fv.SOURCE_FILE_NAME
+        FROM {_DATABASE}.TRUSTED.FORECAST_VALIDATED fv
+        LEFT JOIN {_DATABASE}.CONTROL.UPLOAD_BATCHES ub
+            ON fv.UPLOAD_ID = ub.UPLOAD_ID
+        WHERE fv.IS_ACTIVE = TRUE
         ORDER BY UPLOADED_AT DESC
     """
 
@@ -432,14 +436,14 @@ def get_validated_forecasts_from_snowflake() -> list[dict]:
         except (TypeError, ValueError):
             qty_val = 0
 
-        # UPLOADED_AT — formatar como string
+        # UPLOADED_AT — formatar como DD/MM/AAAA HH:MM (padrão brasileiro, igual ao admin)
         uploaded_at = row["UPLOADED_AT"]
         try:
             import pandas as _pd
             ts = _pd.Timestamp(uploaded_at)
-            processed_at = ts.strftime("%Y-%m-%d %H:%M:%S")
+            processed_at = ts.strftime("%d/%m/%Y %H:%M")
         except Exception:
-            processed_at = str(uploaded_at)[:19] if uploaded_at else "—"
+            processed_at = str(uploaded_at)[:16] if uploaded_at else "—"
 
         rows.append({
             "supplier":      str(row["SUPPLIER_NAME"]) if row["SUPPLIER_NAME"] else "—",
@@ -449,7 +453,7 @@ def get_validated_forecasts_from_snowflake() -> list[dict]:
             "period":        format_period_pt(period_raw),
             "_period_key":   period_raw,
             "qty":           qty_val,
-            "version":       int(row["UPLOAD_VERSION"]),
+            "version":       int(row["UPLOAD_VERSION"]) if row["UPLOAD_VERSION"] is not None and not (isinstance(row["UPLOAD_VERSION"], float) and math.isnan(row["UPLOAD_VERSION"])) else 1,
             "processed_at":  processed_at,
             "source_file":   str(row["SOURCE_FILE_NAME"]) if row["SOURCE_FILE_NAME"] else "—",
             "_source":       "snowflake",

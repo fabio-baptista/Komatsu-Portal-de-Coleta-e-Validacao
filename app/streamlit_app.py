@@ -19,6 +19,7 @@ from utils.streamlit_compat import safe_rerun
 from components.layout import load_css, render_header, render_footer
 from components.navigation import render_sidebar
 from components.cards import metric_card, kpi_card, navy_card, render_cards_row
+from components.badges import status_badge, version_badge
 from pages.supplier_upload import render as render_upload
 from pages.supplier_history import render as render_history
 from pages.supplier_errors import render as render_errors
@@ -27,6 +28,7 @@ from pages.admin_suppliers import render as render_admin_suppliers
 from pages.validated_data import render as render_validated_data
 from pages.admin_upload_detail import render as render_upload_detail
 from pages.admin_dashboard import render as render_admin_dashboard
+from pages.admin_submission_windows import render as render_admin_windows
 from utils.session_state import init_state as _init_session, get_session_uploads
 from services.auth_service import do_admin_login
 
@@ -228,12 +230,10 @@ def _render_supplier_home() -> None:
 
     # Saudação
     st.markdown(
-        f"""
-        <div class="kmt-section">
-            <p class="kmt-section-title">Olá, {supplier_name}</p>
-            <p class="kmt-section-subtitle">Seja bem-vindo ao portal de coleta de forecast.</p>
-        </div>
-        """,
+        '<div class="kmt-section">'
+        f'<p class="kmt-section-title">Olá, {supplier_name}</p>'
+        '<p class="kmt-section-subtitle">Seja bem-vindo ao portal de coleta de forecast.</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -246,17 +246,13 @@ def _render_supplier_home() -> None:
             metric_card("Linhas Processadas", "0"),
         ])
         st.markdown(
-            """
-            <div class="kmt-alert kmt-alert--info" style="margin-top:12px;margin-bottom:4px;">
-                <div class="kmt-alert-icon">📭</div>
-                <div>
-                    <p class="kmt-alert-title">Nenhum forecast enviado até o momento.</p>
-                    <p class="kmt-alert-body">
-                        Use o botão abaixo para enviar seu primeiro arquivo.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:12px;margin-bottom:4px;">'
+            '<div class="kmt-alert-icon">📭</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Nenhum forecast enviado até o momento.</p>'
+            '<p class="kmt-alert-body">'
+            'Use o botão abaixo para enviar seu primeiro arquivo.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
     else:
@@ -274,6 +270,53 @@ def _render_supplier_home() -> None:
             metric_card("Versão Ativa",       versao_label),
             metric_card("Linhas Processadas", str(linhas_total), erros_info),
         ])
+
+        # Tabela resumo do último envio
+        _badge = status_badge(latest.get("status", ""))
+        _ver = version_badge(latest.get("version", 0))
+        _valid_c = (
+            f'<span style="color:#15803D;font-weight:700;">{latest.get("valid_rows", 0)}</span>'
+            if latest.get("valid_rows", 0) > 0 else
+            '<span style="color:#9CA3AF;">0</span>'
+        )
+        _invalid_c = (
+            f'<span style="color:#B91C1C;font-weight:700;">{latest.get("invalid_rows", 0)}</span>'
+            if latest.get("invalid_rows", 0) > 0 else
+            '<span style="color:#9CA3AF;">0</span>'
+        )
+        st.markdown(
+            '<div class="kmt-table-container" style="margin-top:16px;">'
+            '<div class="kmt-table-header">'
+            '<span class="kmt-table-title">Último Envio</span>'
+            '</div>'
+            '<div class="kmt-table-scroll">'
+            '<table class="kmt-table">'
+            '<thead><tr class="kmt-thead-row">'
+            '<th class="kmt-th">Upload ID</th>'
+            '<th class="kmt-th">Arquivo</th>'
+            '<th class="kmt-th">Período</th>'
+            '<th class="kmt-th kmt-th-center">Versão</th>'
+            '<th class="kmt-th">Status</th>'
+            '<th class="kmt-th">Data Envio</th>'
+            '<th class="kmt-th kmt-th-center">Linhas Válidas</th>'
+            '<th class="kmt-th kmt-th-center">Linhas c/ Erro</th>'
+            '</tr></thead>'
+            '<tbody>'
+            f'<tr class="kmt-table-row">'
+            f'<td class="kmt-table-cell kmt-td-id">{latest.get("upload_id", "—")}</td>'
+            f'<td class="kmt-table-cell" style="max-width:220px;overflow:hidden;'
+            f'text-overflow:ellipsis;white-space:nowrap;" title="{latest.get("file_name", "")}">'
+            f'{latest.get("file_name", "—")}</td>'
+            f'<td class="kmt-table-cell kmt-td-period">{latest.get("period", "—")}</td>'
+            f'<td class="kmt-table-cell kmt-td-center">{_ver}</td>'
+            f'<td class="kmt-table-cell">{_badge}</td>'
+            f'<td class="kmt-table-cell kmt-td-date">{latest.get("sent_at", "—")}</td>'
+            f'<td class="kmt-table-cell kmt-td-center">{_valid_c}</td>'
+            f'<td class="kmt-table-cell kmt-td-center">{_invalid_c}</td>'
+            f'</tr>'
+            '</tbody></table></div></div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown('<div class="kmt-spacer-md"></div>', unsafe_allow_html=True)
 
@@ -321,6 +364,7 @@ _PAGE_TITLES = {
     "history":              "Meus Envios",
     "errors":               "Erros / Relatório de Correção",
     "admin_dashboard":      "Painel Administrativo de Coleta",
+    "admin_windows":        "Janelas de Envio",
     "validated_data":       "Forecasts Validados",
     "admin_suppliers":      "Gestão de Fornecedores",
     "admin_upload_detail":  "Detalhe do Envio",
@@ -453,6 +497,8 @@ def main() -> None:
     # Páginas exclusivas de admin
     elif page == "admin_dashboard" and role == "admin":
         render_admin_dashboard()
+    elif page == "admin_windows" and role == "admin":
+        render_admin_windows()
     elif page == "admin_suppliers" and role == "admin":
         render_admin_suppliers()
     elif page == "validated_data" and role == "admin":

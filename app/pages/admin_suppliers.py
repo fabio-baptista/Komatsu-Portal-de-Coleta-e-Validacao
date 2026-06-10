@@ -134,15 +134,12 @@ def _render_page_header() -> None:
 
     with col_title:
         st.markdown(
-            f"""
-            <div class="kmt-section" style="margin-bottom:0;">
-                <p class="kmt-section-title">Gestão de Fornecedores</p>
-                <p class="kmt-section-subtitle">
-                    Cadastre, acompanhe e gerencie os fornecedores participantes
-                    da coleta de forecast — <strong>{period}</strong>.
-                </p>
-            </div>
-            """,
+            '<div class="kmt-section" style="margin-bottom:0;">'
+            '<p class="kmt-section-title">Gestão de Fornecedores</p>'
+            '<p class="kmt-section-subtitle">'
+            'Cadastre, acompanhe e gerencie os fornecedores participantes '
+            f'da coleta de forecast — <strong>{period}</strong>.'
+            '</p></div>',
             unsafe_allow_html=True,
         )
 
@@ -708,6 +705,16 @@ def render() -> None:
     6. Tabela com kebab menu (⋮) por linha — st.popover
     7. Painel de detalhe inline (quando Ver detalhe for clicado no menu)
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        from utils.logger import get_logger
+        get_logger(__name__).exception("Erro ao renderizar Gestão de Fornecedores: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna da tela de Gestão de Fornecedores."""
     all_suppliers = get_all_suppliers()
     status_rows   = get_admin_status_rows()
 

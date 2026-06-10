@@ -22,15 +22,12 @@ from utils.streamlit_compat import safe_rerun
 
 def _render_page_header() -> None:
     st.markdown(
-        """
-        <div class="kmt-section">
-            <p class="kmt-section-title">Detalhe do Envio</p>
-            <p class="kmt-section-subtitle">
-                Consulte as informações do arquivo enviado, status de validação
-                e histórico operacional.
-            </p>
-        </div>
-        """,
+        '<div class="kmt-section">'
+        '<p class="kmt-section-title">Detalhe do Envio</p>'
+        '<p class="kmt-section-subtitle">'
+        'Consulte as informações do arquivo enviado, status de validação '
+        'e histórico operacional.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -154,34 +151,23 @@ def _render_timeline(d: UploadDetail) -> None:
                 + ';margin-top:-20px;"></div>'
             )
         )
-        steps_html += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;flex:1;">
-            <div style="width:36px;height:36px;border-radius:50%;
-                        background:{dot_bg};
-                        display:flex;align-items:center;justify-content:center;
-                        font-size:16px;flex-shrink:0;">
-                <span style="color:{dot_color};font-weight:700;">
-                    {"✓" if step.completed else "○"}
-                </span>
-            </div>
-            <p style="font-size:12px;font-weight:600;color:{label_color};
-                      margin:8px 0 0;text-align:center;">{step.label}</p>
-            {ts_html}
-        </div>
-        {"" if is_last else '<div style="flex:1;height:2px;background:' + ("#002B5C" if step.completed else "#E5E7EB") + ';margin:18px -8px 0;align-self:flex-start;"></div>'}
-        """
+        steps_html += (
+            '<div style="display:flex;flex-direction:column;align-items:center;flex:1;">'
+            f'<div style="width:36px;height:36px;border-radius:50%;background:{dot_bg};'
+            'display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">'
+            f'<span style="color:{dot_color};font-weight:700;">{"✓" if step.completed else "○"}</span>'
+            '</div>'
+            f'<p style="font-size:12px;font-weight:600;color:{label_color};margin:8px 0 0;text-align:center;">{step.label}</p>'
+            f'{ts_html}'
+            '</div>'
+            + ("" if is_last else f'<div style="flex:1;height:2px;background:{"#002B5C" if step.completed else "#E5E7EB"};margin:18px -8px 0;align-self:flex-start;"></div>')
+        )
 
     st.markdown(
-        f"""
-        <div class="kmt-card" style="padding:20px 24px;">
-            <p class="kmt-card-label" style="margin-bottom:16px;">
-                Timeline de Processamento
-            </p>
-            <div style="display:flex;align-items:flex-start;gap:0;padding:8px 16px;">
-                {steps_html}
-            </div>
-        </div>
-        """,
+        '<div class="kmt-card" style="padding:20px 24px;">'
+        '<p class="kmt-card-label" style="margin-bottom:16px;">Timeline de Processamento</p>'
+        f'<div style="display:flex;align-items:flex-start;gap:0;padding:8px 16px;">{steps_html}</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -232,38 +218,26 @@ def _render_metadata_table(d: UploadDetail) -> None:
         table_title = "Informações do Envio"
     rows_html = ""
     for campo, valor in rows_data:
-        rows_html += f"""
-        <tr class="kmt-table-row">
-            <td class="kmt-table-cell"
-                style="font-family:monospace;font-weight:600;color:#002B5C;
-                       font-size:12px;">
-                {campo}
-            </td>
-            <td class="kmt-table-cell"
-                style="font-size:12px;color:#374151;">
-                {valor}
-            </td>
-        </tr>"""
+        rows_html += (
+            '<tr class="kmt-table-row">'
+            f'<td class="kmt-table-cell" style="font-family:monospace;font-weight:600;color:#002B5C;font-size:12px;">{campo}</td>'
+            f'<td class="kmt-table-cell" style="font-size:12px;color:#374151;">{valor}</td>'
+            '</tr>'
+        )
 
     st.markdown(
-        f"""
-        <div class="kmt-table-container">
-            <div class="kmt-table-header">
-                <span class="kmt-table-title">{table_title}</span>
-            </div>
-            <div class="kmt-table-scroll">
-                <table class="kmt-table">
-                    <thead>
-                        <tr class="kmt-thead-row">
-                            <th class="kmt-th">Campo</th>
-                            <th class="kmt-th">Valor</th>
-                        </tr>
-                    </thead>
-                    <tbody>{rows_html}</tbody>
-                </table>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-table-container">'
+        '<div class="kmt-table-header">'
+        f'<span class="kmt-table-title">{table_title}</span>'
+        '</div>'
+        '<div class="kmt-table-scroll">'
+        '<table class="kmt-table">'
+        '<thead><tr class="kmt-thead-row">'
+        '<th class="kmt-th">Campo</th>'
+        '<th class="kmt-th">Valor</th>'
+        '</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        '</table></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -274,46 +248,30 @@ def _render_validation_table(d: UploadDetail) -> None:
     for chk in d.validation_checks:
         result_color = "#15803D" if chk.result == "OK" else "#B91C1C"
         result_bg    = "#DCFCE7" if chk.result == "OK" else "#FEE2E2"
-        rows_html += f"""
-        <tr class="kmt-table-row">
-            <td class="kmt-table-cell"
-                style="font-weight:600;font-size:13px;color:#374151;">
-                {chk.check}
-            </td>
-            <td class="kmt-table-cell">
-                <span style="display:inline-block;padding:3px 10px;
-                             border-radius:9999px;font-size:11px;
-                             font-weight:700;background:{result_bg};
-                             color:{result_color};">
-                    {chk.result}
-                </span>
-            </td>
-            <td class="kmt-table-cell"
-                style="font-size:12px;color:#6B7280;font-style:italic;">
-                {chk.observation}
-            </td>
-        </tr>"""
+        rows_html += (
+            '<tr class="kmt-table-row">'
+            f'<td class="kmt-table-cell" style="font-weight:600;font-size:13px;color:#374151;">{chk.check}</td>'
+            f'<td class="kmt-table-cell">'
+            f'<span style="display:inline-block;padding:3px 10px;border-radius:9999px;font-size:11px;'
+            f'font-weight:700;background:{result_bg};color:{result_color};">{chk.result}</span></td>'
+            f'<td class="kmt-table-cell" style="font-size:12px;color:#6B7280;font-style:italic;">{chk.observation}</td>'
+            '</tr>'
+        )
 
     st.markdown(
-        f"""
-        <div class="kmt-table-container">
-            <div class="kmt-table-header">
-                <span class="kmt-table-title">Resumo de Validação</span>
-            </div>
-            <div class="kmt-table-scroll">
-                <table class="kmt-table">
-                    <thead>
-                        <tr class="kmt-thead-row">
-                            <th class="kmt-th">Validação</th>
-                            <th class="kmt-th">Resultado</th>
-                            <th class="kmt-th">Observação</th>
-                        </tr>
-                    </thead>
-                    <tbody>{rows_html}</tbody>
-                </table>
-            </div>
-        </div>
-        """,
+        '<div class="kmt-table-container">'
+        '<div class="kmt-table-header">'
+        '<span class="kmt-table-title">Resumo de Validação</span>'
+        '</div>'
+        '<div class="kmt-table-scroll">'
+        '<table class="kmt-table">'
+        '<thead><tr class="kmt-thead-row">'
+        '<th class="kmt-th">Validação</th>'
+        '<th class="kmt-th">Resultado</th>'
+        '<th class="kmt-th">Observação</th>'
+        '</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        '</table></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -348,11 +306,9 @@ def _render_actions(detail: UploadDetail) -> None:
     show_cancel = (role == "supplier" and can_cancel(temp_record))
 
     st.markdown(
-        """
-        <div class="kmt-card" style="padding:16px 20px;">
-            <p class="kmt-card-label" style="margin-bottom:12px;">Ações</p>
-        </div>
-        """,
+        '<div class="kmt-card" style="padding:16px 20px;">'
+        '<p class="kmt-card-label" style="margin-bottom:12px;">Ações</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -416,15 +372,12 @@ def _render_actions(detail: UploadDetail) -> None:
 def _render_disclaimer() -> None:
     """Observação discreta sobre o escopo da tela."""
     st.markdown(
-        """
-        <div style="margin-top:16px;padding:10px 16px;background:#F9FAFB;
-                    border-left:3px solid #E5E7EB;border-radius:4px;">
-            <p style="font-size:11px;color:#9CA3AF;margin:0;font-family:monospace;">
-                ℹ&nbsp; Esta tela não altera os dados. Ela demonstra a rastreabilidade
-                do upload, status de validação e destino final do processamento.
-            </p>
-        </div>
-        """,
+        '<div style="margin-top:16px;padding:10px 16px;background:#F9FAFB;'
+        'border-left:3px solid #E5E7EB;border-radius:4px;">'
+        '<p style="font-size:11px;color:#9CA3AF;margin:0;font-family:monospace;">'
+        'ℹ&nbsp; Esta tela não altera os dados. Ela demonstra a rastreabilidade '
+        'do upload, status de validação e destino final do processamento.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -438,6 +391,16 @@ def render() -> None:
     Renderiza a tela de detalhe de envio.
     Chamado por streamlit_app.py quando page == 'admin_upload_detail'.
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        from utils.logger import get_logger
+        get_logger(__name__).exception("Erro ao renderizar Detalhe do Envio: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna da tela de detalhe."""
     upload_id = st.session_state.get("detail_upload_id")
 
     _render_page_header()
@@ -446,18 +409,14 @@ def render() -> None:
     if not upload_id:
         role = st.session_state.get("role", "admin")
         st.markdown(
-            """
-            <div class="kmt-alert kmt-alert--info" style="margin-top:24px;">
-                <div class="kmt-alert-icon">ℹ</div>
-                <div>
-                    <p class="kmt-alert-title">Nenhum envio selecionado</p>
-                    <p class="kmt-alert-body">
-                        Acesse o painel ou a lista de fornecedores para selecionar
-                        um envio e visualizar seus detalhes.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:24px;">'
+            '<div class="kmt-alert-icon">ℹ</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Nenhum envio selecionado</p>'
+            '<p class="kmt-alert-body">'
+            'Acesse o painel ou a lista de fornecedores para selecionar '
+            'um envio e visualizar seus detalhes.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
         st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
@@ -480,18 +439,13 @@ def render() -> None:
     if detail is None:
         role = st.session_state.get("role", "admin")
         st.markdown(
-            f"""
-            <div class="kmt-alert kmt-alert--info" style="margin-top:24px;">
-                <div class="kmt-alert-icon">⚠</div>
-                <div>
-                    <p class="kmt-alert-title">Envio não encontrado</p>
-                    <p class="kmt-alert-body">
-                        Não foi possível carregar os dados do envio
-                        <strong>{upload_id}</strong>.
-                    </p>
-                </div>
-            </div>
-            """,
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:24px;">'
+            '<div class="kmt-alert-icon">⚠</div>'
+            '<div>'
+            '<p class="kmt-alert-title">Envio não encontrado</p>'
+            '<p class="kmt-alert-body">'
+            f'Não foi possível carregar os dados do envio <strong>{upload_id}</strong>.'
+            '</p></div></div>',
             unsafe_allow_html=True,
         )
         st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)

@@ -98,15 +98,12 @@ def _apply_filters(
 
 def _render_page_header() -> None:
     st.markdown(
-        """
-        <div class="kmt-section">
-            <p class="kmt-section-title">Painel de Coleta de Forecast</p>
-            <p class="kmt-section-subtitle">
-                Acompanhamento do ciclo de envio de forecast por fornecedor.
-                Utilize os filtros abaixo para selecionar período e fornecedores.
-            </p>
-        </div>
-        """,
+        '<div class="kmt-section">'
+        '<p class="kmt-section-title">Painel de Coleta de Forecast</p>'
+        '<p class="kmt-section-subtitle">'
+        'Acompanhamento do ciclo de envio de forecast por fornecedor. '
+        'Utilize os filtros abaixo para selecionar período e fornecedores.'
+        '</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -230,21 +227,19 @@ def _render_status_table(rows: list[dict], period_lbl: str) -> str:
     """
     HTML da tabela de status por fornecedor.
     Colunas: Fornecedor, Código, Período, Status da Coleta,
-             Último Envio, Versão Ativa, Erros.
+             Último Envio, Versão Ativa.
     Ações clicáveis ficam em _render_action_buttons(), abaixo da tabela.
     """
     if not rows:
-        return f"""
-        <div class="kmt-table-container">
-            <div class="kmt-table-header">
-                <span class="kmt-table-title">
-                    Status por Fornecedor — {period_lbl}
-                </span>
-            </div>
-            <div style="padding:40px;text-align:center;color:#9CA3AF;font-size:13px;">
-                Nenhum fornecedor encontrado para os filtros selecionados.
-            </div>
-        </div>"""
+        return (
+            '<div class="kmt-table-container">'
+            '<div class="kmt-table-header">'
+            f'<span class="kmt-table-title">Status por Fornecedor — {period_lbl}</span>'
+            '</div>'
+            '<div style="padding:40px;text-align:center;color:#9CA3AF;font-size:13px;">'
+            'Nenhum fornecedor encontrado para os filtros selecionados.'
+            '</div></div>'
+        )
 
     table_rows = ""
     for r in rows:
@@ -256,64 +251,46 @@ def _render_status_table(rows: list[dict], period_lbl: str) -> str:
             else f'<span style="color:#9CA3AF;font-size:12px;">{r["version"]}</span>'
         )
 
-        errors_html = (
-            f'<span style="color:#B91C1C;font-weight:700;">{r["errors"]}</span>'
-            if isinstance(r["errors"], int) and r["errors"] > 0
-            else f'<span style="color:#9CA3AF;">—</span>'
-        )
-
         period_display = _period_label(r["period"]) if r["period"] != "—" else "—"
 
-        table_rows += f"""
-        <tr class="kmt-table-row">
-            <td class="kmt-table-cell"
-                style="font-weight:700;color:#002B5C;">{r['name']}</td>
-            <td class="kmt-table-cell"
-                style="font-family:monospace;font-size:12px;
-                       color:#6B7280;">{r['code']}</td>
-            <td class="kmt-table-cell"
-                style="color:#2563EB;font-size:12px;">{period_display}</td>
-            <td class="kmt-table-cell">{badge}</td>
-            <td class="kmt-table-cell kmt-td-date">{r['last']}</td>
-            <td class="kmt-table-cell kmt-td-center">{ver_html}</td>
-            <td class="kmt-table-cell kmt-td-center">{errors_html}</td>
-        </tr>"""
+        table_rows += (
+            '<tr class="kmt-table-row">'
+            f'<td class="kmt-table-cell" style="font-weight:700;color:#002B5C;">{r["name"]}</td>'
+            f'<td class="kmt-table-cell" style="font-family:monospace;font-size:12px;color:#6B7280;">{r["code"]}</td>'
+            f'<td class="kmt-table-cell" style="color:#2563EB;font-size:12px;">{period_display}</td>'
+            f'<td class="kmt-table-cell">{badge}</td>'
+            f'<td class="kmt-table-cell kmt-td-date">{r["last"]}</td>'
+            f'<td class="kmt-table-cell kmt-td-center">{ver_html}</td>'
+            '</tr>'
+        )
 
-    return f"""
-    <div class="kmt-table-container">
-        <div class="kmt-table-header">
-            <span class="kmt-table-title">
-                Status por Fornecedor — {period_lbl}
-            </span>
-            <span style="font-size:11px;color:#9CA3AF;">{len(rows)} fornecedor(es)</span>
-        </div>
-        <div class="kmt-table-scroll">
-            <table class="kmt-table">
-                <thead>
-                    <tr class="kmt-thead-row">
-                        <th class="kmt-th">Fornecedor</th>
-                        <th class="kmt-th">Código</th>
-                        <th class="kmt-th">Período</th>
-                        <th class="kmt-th">Status da Coleta</th>
-                        <th class="kmt-th">Último Envio</th>
-                        <th class="kmt-th kmt-th-center">Versão Ativa</th>
-                        <th class="kmt-th kmt-th-center">Erros</th>
-                    </tr>
-                </thead>
-                <tbody>{table_rows}</tbody>
-            </table>
-        </div>
-    </div>"""
+    return (
+        '<div class="kmt-table-container">'
+        '<div class="kmt-table-header">'
+        f'<span class="kmt-table-title">Status por Fornecedor — {period_lbl}</span>'
+        f'<span style="font-size:11px;color:#9CA3AF;">{len(rows)} fornecedor(es)</span>'
+        '</div>'
+        '<div class="kmt-table-scroll">'
+        '<table class="kmt-table">'
+        '<thead><tr class="kmt-thead-row">'
+        '<th class="kmt-th">Fornecedor</th>'
+        '<th class="kmt-th">Código</th>'
+        '<th class="kmt-th">Período</th>'
+        '<th class="kmt-th">Status da Coleta</th>'
+        '<th class="kmt-th">Último Envio</th>'
+        '<th class="kmt-th kmt-th-center">Versão Ativa</th>'
+        '</tr></thead>'
+        f'<tbody>{table_rows}</tbody>'
+        '</table></div></div>'
+    )
 
 
 def _render_quick_nav() -> None:
     """Atalhos rápidos para as principais telas administrativas."""
     st.markdown(
-        """
-        <div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">
-            <p class="kmt-card-label">Navegação Rápida</p>
-        </div>
-        """,
+        '<div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">'
+        '<p class="kmt-card-label">Navegação Rápida</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -352,11 +329,9 @@ def _render_action_buttons(rows: list[dict]) -> None:
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
     st.markdown(
-        """
-        <div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">
-            <p class="kmt-card-label">Ações por Fornecedor</p>
-        </div>
-        """,
+        '<div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">'
+        '<p class="kmt-card-label">Ações por Fornecedor</p>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -426,6 +401,16 @@ def render() -> None:
     4. Aplicar filtros de fornecedor/status
     5. KPIs + tabela + botões de ação
     """
+    try:
+        _render_impl()
+    except Exception as exc:
+        from utils.logger import get_logger
+        get_logger(__name__).exception("Erro ao renderizar Painel Admin: %s", exc)
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+
+
+def _render_impl() -> None:
+    """Implementação interna do painel admin."""
     _render_page_header()
 
     periods = _get_available_periods()

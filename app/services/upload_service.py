@@ -415,28 +415,22 @@ def _build_admin_rows_from_snowflake(session, period: str) -> list[dict]:
                 "period":    period,
                 "status":    "valid",
                 "last":      last,
-                "version":   int(row["VERSION"]) if row["VERSION"] is not None else 1,
+                "version":   _safe_int(row["VERSION"], 1),
                 "errors":    0,
                 "upload_id": str(upload_id) if upload_id else None,
             })
         elif upload_status == "INVALID":
-            # Tem upload inválido — status pendente no painel
-            uploaded_at = row["UPLOADED_AT"]
-            try:
-                ts = pd.Timestamp(uploaded_at)
-                last = ts.strftime("%d/%m/%Y %H:%M")
-            except Exception:
-                last = str(uploaded_at)[:16] if uploaded_at else "—"
-
+            # Upload inválido no período: fornecedor fica como Pendente.
+            # Erros são responsabilidade do fornecedor — não exibir no admin.
             rows.append({
                 "name":      name,
                 "code":      code,
                 "period":    period,
                 "status":    "pending",
-                "last":      last,
+                "last":      "—",
                 "version":   "—",
-                "errors":    int(row["INVALID_ROWS"]) if row["INVALID_ROWS"] else "—",
-                "upload_id": str(upload_id) if upload_id else None,
+                "errors":    "—",
+                "upload_id": None,
             })
         else:
             # Sem upload no período → Pendente
@@ -684,13 +678,13 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
                     file_name=         str(row["FILE_NAME"]),
                     report_type=       str(row["REPORT_TYPE"]),
                     period=            str(row["REFERENCE_PERIOD"]),
-                    version=           int(row["VERSION"]),
+                    version=           _safe_int(row["VERSION"], 1),
                     status=            raw_status,
                     uploaded_by=       str(row["UPLOADED_BY"]) if row["UPLOADED_BY"] else "—",
                     sent_at=           sent_at,
-                    total_rows=        int(row["TOTAL_ROWS"]),
-                    valid_rows=        int(row["VALID_ROWS"]),
-                    invalid_rows=      int(row["INVALID_ROWS"]),
+                    total_rows=        _safe_int(row["TOTAL_ROWS"]),
+                    valid_rows=        _safe_int(row["VALID_ROWS"]),
+                    invalid_rows=      _safe_int(row["INVALID_ROWS"]),
                     target_layer=      "TRUSTED.forecast_validated",
                     is_active=         bool(row["IS_ACTIVE"]),
                     timeline=          [],
@@ -759,6 +753,7 @@ def get_upload_detail(upload_id: str) -> Optional[UploadDetail]:
 # Persistência em Snowflake — CONTROL.UPLOAD_BATCHES
 # ---------------------------------------------------------------------------
 
+import math
 import uuid
 
 from utils.logger import get_logger
@@ -766,6 +761,18 @@ from utils.logger import get_logger
 _upload_logger = get_logger(__name__)
 
 _DATABASE = "KBI_DATA_JOURNEY_DEV_DB"
+
+
+def _safe_int(value, default: int = 0) -> int:
+    """Converte valor para int de forma segura, tratando None, NaN e strings vazias."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, float) and math.isnan(value):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def persist_upload_batch(
@@ -781,6 +788,7 @@ def persist_upload_batch(
     uploaded_by: str,
     report_type: str = DEFAULT_REPORT_TYPE,
     window_id: str | None = None,
+    uploaded_at: str | None = None,
 ) -> dict | None:
     """
     Persiste um registro de upload em CONTROL.UPLOAD_BATCHES no Snowflake.
@@ -855,19 +863,27 @@ def persist_upload_batch(
     safe_user_id = user_id.replace("'", "''") if user_id else supplier_id
     window_val = f"'{window_id}'" if window_id else "NULL"
 
+    # Se uploaded_at fornecido, incluir na coluna; senão Snowflake usa CURRENT_TIMESTAMP()
+    if uploaded_at:
+        ts_col = ", UPLOADED_AT"
+        ts_val = f", '{uploaded_at}'"
+    else:
+        ts_col = ""
+        ts_val = ""
+
     insert_sql = f"""
         INSERT INTO {_DATABASE}.CONTROL.UPLOAD_BATCHES (
             UPLOAD_ID, SUPPLIER_ID, SUPPLIER_NAME, USER_ID,
             REPORT_TYPE, REFERENCE_PERIOD, VERSION, VERSION_KEY,
             STATUS, IS_ACTIVE, FILE_NAME,
             TOTAL_ROWS, VALID_ROWS, INVALID_ROWS,
-            UPLOADED_BY, WINDOW_ID
+            UPLOADED_BY, WINDOW_ID{ts_col}
         ) VALUES (
             '{upload_id}', '{supplier_id}', '{safe_name}', '{safe_user_id}',
             '{report_type}', '{reference_period}', {next_version}, '{version_key.replace("'", "''")}',
             '{status_upper}', {is_active}, '{safe_file}',
             {total_rows}, {valid_rows}, {invalid_rows},
-            '{safe_by}', {window_val}
+            '{safe_by}', {window_val}{ts_val}
         )
     """
 
@@ -1033,7 +1049,7 @@ def get_validation_errors(upload_id: str) -> list[dict]:
     results: list[dict] = []
     for _, row in df.iterrows():
         results.append({
-            "linha":               int(row["ROW_NUMBER"]),
+            "linha":               _safe_int(row["ROW_NUMBER"]),
             "coluna":              str(row["COLUMN_NAME"]),
             "valor_informado":     str(row["VALUE_INFORMED"]) if row["VALUE_INFORMED"] else "",
             "erro":                str(row["ERROR_TYPE"]),
@@ -1125,11 +1141,11 @@ def get_supplier_upload_batches(supplier_id: str) -> list[dict]:
             "upload_id":    str(row["UPLOAD_ID"]),
             "file_name":    str(row["FILE_NAME"]),
             "period":       str(row["REFERENCE_PERIOD"]),
-            "version":      int(row["VERSION"]),
+            "version":      _safe_int(row["VERSION"], 1),
             "status":       raw_status,
             "sent_at":      sent_at,
-            "valid_rows":   int(row["VALID_ROWS"]),
-            "invalid_rows": int(row["INVALID_ROWS"]),
+            "valid_rows":   _safe_int(row["VALID_ROWS"]),
+            "invalid_rows": _safe_int(row["INVALID_ROWS"]),
             "supplier_id":  str(row["SUPPLIER_ID"]),
             "is_active":    bool(row["IS_ACTIVE"]),
             "report_type":  str(row["REPORT_TYPE"]),

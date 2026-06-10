@@ -5,6 +5,7 @@ Servico de dados de fornecedores.
 Le e grava fornecedores na tabela CONTROL.SUPPLIERS via Snowflake.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -99,9 +100,12 @@ def get_next_supplier_code() -> str:
             FROM {DATABASE}.CONTROL.SUPPLIERS
             WHERE SUPPLIER_CODE LIKE 'SUP%'"""
     )
-    if df is None or df.empty or df.iloc[0]["MAX_NUM"] is None:
+    if df is None or df.empty:
         return "SUP001"
-    return f"SUP{int(df.iloc[0]['MAX_NUM']) + 1:03d}"
+    max_num = _safe_int(df.iloc[0]["MAX_NUM"], 0)
+    if max_num == 0:
+        return "SUP001"
+    return f"SUP{max_num + 1:03d}"
 
 
 def create_supplier(name: str, email: str, status: str = "active") -> Optional[SupplierRecord]:
@@ -167,6 +171,18 @@ def update_supplier_status(supplier_id: str, new_status: str) -> bool:
     return True
 
 
+def _safe_int(value, default: int = 0) -> int:
+    """Converte valor para int de forma segura, tratando None, NaN e strings vazias."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, float) and math.isnan(value):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def get_summary() -> dict:
     df = execute_query(
         f"""SELECT
@@ -178,8 +194,8 @@ def get_summary() -> dict:
         return {"total_active": 0, "total_inactive": 0}
     row = df.iloc[0].to_dict()
     return {
-        "total_active":   int(row.get("TOTAL_ACTIVE", 0) or 0),
-        "total_inactive": int(row.get("TOTAL_INACTIVE", 0) or 0),
+        "total_active":   _safe_int(row.get("TOTAL_ACTIVE")),
+        "total_inactive": _safe_int(row.get("TOTAL_INACTIVE")),
     }
 
 

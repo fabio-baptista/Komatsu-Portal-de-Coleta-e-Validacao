@@ -20,6 +20,7 @@ _SUPPLIER_MENU = [
 
 _ADMIN_MENU = [
     {"icon": "📊", "label": "Painel de Coleta",    "page": "admin_dashboard"},
+    {"icon": "📅", "label": "Janelas de Envio",   "page": "admin_windows"},
     {"icon": "✅", "label": "Forecasts Validados", "page": "validated_data"},
     {"icon": "🏭", "label": "Fornecedores",        "page": "admin_suppliers"},
 ]
@@ -59,26 +60,24 @@ def render_sidebar(role: str, current_page: str) -> None:
     from services.mock_data_service import get_current_open_window
     window = get_current_open_window()
     if window:
-        label     = window.get("label", "")
-        closes_at = window.get("closes_at", "")
-        pct       = int(window.get("progress_pct", 0))
-        detail    = (
-            f'{pct}%&nbsp;·&nbsp;<em>Encerra em {closes_at}</em>'
-            if closes_at and closes_at != "—"
-            else label
-        )
+        label      = window.get("label", "")
+        closes_at  = window.get("closes_at") or window.get("end_date", "")
+        start_date = window.get("start_date", "")
+        pct        = int(window.get("progress_pct", 0))
+        if start_date and closes_at and closes_at != "—":
+            detail = f'{pct}%&nbsp;·&nbsp;<em>{start_date} a {closes_at}</em>'
+        elif closes_at and closes_at != "—":
+            detail = f'{pct}%&nbsp;·&nbsp;<em>Encerra em {closes_at}</em>'
+        else:
+            detail = label
         st.markdown(
-            f"""
-            <div class="kmt-sidebar-window">
-                <div class="kmt-sidebar-window-label">Janela — {label}</div>
-                <div class="kmt-sidebar-progress">
-                    <div class="kmt-sidebar-progress-bar" style="width:{pct}%"></div>
-                </div>
-                <div class="kmt-sidebar-window-detail">
-                    {detail}
-                </div>
-            </div>
-            """,
+            '<div class="kmt-sidebar-window">'
+            f'<div class="kmt-sidebar-window-label">Janela — {label}</div>'
+            '<div class="kmt-sidebar-progress">'
+            f'<div class="kmt-sidebar-progress-bar" style="width:{pct}%"></div>'
+            '</div>'
+            f'<div class="kmt-sidebar-window-detail">{detail}</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
