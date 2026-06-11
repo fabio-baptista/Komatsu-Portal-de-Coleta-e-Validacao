@@ -135,7 +135,7 @@ def _render_upload_context(ctx: dict, n_errors: int) -> None:
         f'<p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;word-break:break-all;">{ctx["file_name"]}</p>'
         '</div>'
         '<div>'
-        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Fornecedor</p>'
+        '<p style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 3px;">Distribuidor</p>'
         f'<p style="font-size:13px;font-weight:600;color:#002B5C;margin:0;">{ctx["supplier"]}</p>'
         '</div>'
         '<div>'
@@ -211,7 +211,7 @@ def _render_download_and_note(errors_df: pd.DataFrame, ctx: dict) -> None:
         back_labels = {
             "history":         "← Voltar para Meus Envios",
             "admin_dashboard": "← Voltar ao Painel",
-            "admin_suppliers": "← Voltar a Fornecedores",
+            "admin_suppliers": "← Voltar a Distribuidores",
         }
         back_label = back_labels.get(back_page, "← Voltar")
 

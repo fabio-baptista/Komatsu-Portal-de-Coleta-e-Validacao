@@ -23,7 +23,7 @@ _ADMIN_MENU = [
     {"icon": "📅", "label": "Janelas de Envio",   "page": "admin_windows"},
     {"icon": "📦", "label": "Estoques Validados", "page": "stock_validated"},
     {"icon": "✅", "label": "Forecasts Validados", "page": "validated_data"},
-    {"icon": "🏭", "label": "Fornecedores",        "page": "admin_suppliers"},
+    {"icon": "🏭", "label": "Distribuidores",        "page": "admin_suppliers"},
 ]
 
 
@@ -34,7 +34,7 @@ def render_sidebar(role: str, current_page: str) -> None:
     A marca KOMATSU é exibida apenas no header principal da página (render_header).
     """
     # --- Label de seção ---
-    section_label = "Fornecedor" if role == "supplier" else "Administrativo"
+    section_label = "Distribuidor" if role == "supplier" else "Administrativo"
     st.markdown(
         f'<div class="kmt-sidebar-section-label">{section_label}</div>',
         unsafe_allow_html=True,

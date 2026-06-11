@@ -21,7 +21,7 @@ _STATUS_CONFIG: dict[str, dict] = {
     # Status de fornecedor
     "active":       {"bg": "#DCFCE7", "color": "#15803D", "label": "Ativo"},
     "inactive":     {"bg": "#F3F4F6", "color": "#6B7280", "label": "Inativo"},
-    "not_expected": {"bg": "#F3F4F6", "color": "#9CA3AF", "label": "Nao esperado"},
+    "not_expected": {"bg": "#F3F4F6", "color": "#9CA3AF", "label": "Não esperado"},
 }
 
 

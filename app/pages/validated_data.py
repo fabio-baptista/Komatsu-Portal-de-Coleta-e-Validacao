@@ -35,7 +35,7 @@ _logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _ALL_PERIODS_LABEL   = "Todos os períodos"
-_ALL_SUPPLIERS_LABEL = "Todos os fornecedores"
+_ALL_SUPPLIERS_LABEL = "Todos os distribuidores"
 _ALL_BRANCHES_LABEL  = "Todas as filiais"
 _ALL_MATERIALS_LABEL = "Todos os materiais"
 
@@ -91,7 +91,7 @@ def _mock_to_rows() -> list[dict]:
 def _render_page_header() -> None:
     layout.page_header(
         title="Forecasts Validados",
-        subtitle="Consulte os forecasts válidos enviados pelos fornecedores.",
+        subtitle="Consulte os forecasts válidos enviados pelos distribuidores.",
     )
 
 
@@ -104,7 +104,7 @@ def _render_demo_banner() -> None:
         '<p class="kmt-alert-body">'
         'Nenhum upload real foi realizado nesta sessão. '
         'Os dados abaixo são de demonstração e serão substituídos '
-        'automaticamente após os fornecedores enviarem forecasts.'
+        'automaticamente apos os distribuidores enviarem forecasts.'
         '</p></div></div>',
         unsafe_allow_html=True,
     )
@@ -158,7 +158,7 @@ def _render_filters(rows: list[dict]) -> tuple[list[dict], str, str]:
         )
     with col2:
         sel_supplier = st.selectbox(
-            "Fornecedor",
+            "Distribuidor",
             [_ALL_SUPPLIERS_LABEL] + suppliers,
             key="vd_filter_supplier",
         )
@@ -220,7 +220,7 @@ def _render_summary_cards(
 
     cards = [
         {"label": "Registros Validados", "value": str(total),                           "icon": "✅", "neutral": True},
-        {"label": "Fornecedores",        "value": str(n_suppliers),                     "icon": "🏢", "neutral": True},
+        {"label": "Distribuidores",        "value": str(n_suppliers),                     "icon": "🏢", "neutral": True},
         {"label": "Período",             "value": period_label,                         "icon": "📅", "neutral": True},
         {"label": qty_card_label,        "value": str(qty_total) if qty_total else "—", "icon": "📦", "neutral": True},
     ]
@@ -272,7 +272,7 @@ def _render_table(rows: list[dict]) -> str:
         '<div class="kmt-table-scroll">'
         '<table class="kmt-table">'
         '<thead><tr class="kmt-thead-row">'
-        '<th class="kmt-th">Fornecedor</th>'
+        '<th class="kmt-th">Distribuidor</th>'
         '<th class="kmt-th">Filial</th>'
         '<th class="kmt-th">Cód. Material</th>'
         '<th class="kmt-th">Descrição</th>'
@@ -294,12 +294,12 @@ def _render_export(rows: list[dict]) -> None:
     CSV:  sempre disponível.
     """
     col_names = [
-        "Fornecedor", "Filial", "Cód. Material", "Descrição",
+        "Distribuidor", "Filial", "Cód. Material", "Descrição",
         "Período", "Qtd.", "Versão", "Data de Envio", "Arquivo",
     ]
     df = pd.DataFrame(
         [{
-            "Fornecedor":    r["supplier"],
+            "Distribuidor":    r["supplier"],
             "Filial":        r["branch"],
             "Cód. Material": r["material_code"],
             "Descrição":     r["description"],
@@ -355,7 +355,7 @@ def _render_empty_state() -> None:
     layout.empty_state(
         message=(
             "Nenhum forecast válido disponível para os filtros selecionados. "
-            "Ajuste os filtros ou aguarde o envio dos fornecedores."
+            "Ajuste os filtros ou aguarde o envio dos distribuidores."
         ),
         icon="📭",
     )
@@ -429,7 +429,7 @@ def _render_impl() -> None:
     if not base_rows:
         layout.kpi_row([
             {"label": "Registros Validados",  "value": "0", "icon": "✅", "neutral": True},
-            {"label": "Fornecedores",         "value": "0", "icon": "🏢", "neutral": True},
+            {"label": "Distribuidores",         "value": "0", "icon": "🏢", "neutral": True},
             {"label": "Período",              "value": "—", "icon": "📅", "neutral": True},
             {"label": "Qtd. Prevista Total",  "value": "—", "icon": "📦", "neutral": True},
         ])

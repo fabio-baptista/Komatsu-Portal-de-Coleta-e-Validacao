@@ -93,7 +93,7 @@ def page_header(
     Uso:
         layout.page_header(
             "Painel de Coleta de Forecast",
-            subtitle="Visão consolidada por fornecedor",
+            subtitle="Visao consolidada por distribuidor",
             source_hint="uploads · suppliers",
         )
     """

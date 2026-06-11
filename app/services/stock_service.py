@@ -192,7 +192,7 @@ def validate_stock_file(
             normalized_dataframe=pd.DataFrame(),
             errors_dataframe=pd.DataFrame([
                 _err(0, "—", "—", "Arquivo vazio",
-                     "O arquivo nao contem dados. Verifique se enviou o arquivo correto.")
+                     "O arquivo não contém dados. Verifique se enviou o arquivo correto.")
             ]),
             summary={"total_rows": 0, "valid_rows": 0, "invalid_rows": 0,
                      "empty_removed": 0, "column_map": {}},
@@ -210,7 +210,7 @@ def validate_stock_file(
             normalized_dataframe=pd.DataFrame(),
             errors_dataframe=pd.DataFrame([
                 _err(0, missing_labels, "—",
-                     f"Coluna(s) obrigatoria(s) nao encontrada(s): {missing_labels}",
+                     f"Coluna(s) obrigatória(s) não encontrada(s): {missing_labels}",
                      "Verifique se o arquivo possui as colunas: "
                      + ", ".join(STOCK_REQUIRED_COLUMNS))
             ]),
@@ -427,7 +427,7 @@ def normalize_stock(
     staging_df = pd.DataFrame(rows, columns=_FINAL_COLUMNS)
 
     if col_map.get("material_description") is None:
-        warnings.append("Coluna 'Descricao' nao encontrada — campo ficara vazio.")
+        warnings.append("Coluna 'Descricao' não encontrada — campo ficará vazio.")
 
     return NormalizationResult(
         success=True,

@@ -61,7 +61,7 @@ def _render_identification_block(d: UploadDetail) -> None:
     with c1:
         st.markdown(_field("Upload ID", d.upload_id, mono=True), unsafe_allow_html=True)
     with c2:
-        st.markdown(_field("Fornecedor", d.supplier_name), unsafe_allow_html=True)
+        st.markdown(_field("Distribuidor", d.supplier_name), unsafe_allow_html=True)
     with c3:
         st.markdown(_field("Arquivo", d.file_name, mono=True), unsafe_allow_html=True)
 
@@ -203,7 +203,7 @@ def _render_metadata_table(d: UploadDetail) -> None:
         }
         rows_data = [
             ("Upload ID",              d.upload_id),
-            ("Fornecedor",             d.supplier_name),
+            ("Distribuidor",             d.supplier_name),
             ("Arquivo",                d.file_name),
             ("Período",                d.period),
             ("Versão",                 str(d.version)),
@@ -320,7 +320,7 @@ def _render_actions(detail: UploadDetail) -> None:
         back_labels = {
             "history":         "← Voltar para Meus Envios",
             "admin_dashboard": "← Voltar ao Painel",
-            "admin_suppliers": "← Voltar a Fornecedores",
+            "admin_suppliers": "← Voltar a Distribuidores",
         }
         back_label = back_labels.get(back_page, "← Voltar")
         if st.button(back_label, key="btn_back_history", use_container_width=True):
@@ -329,7 +329,7 @@ def _render_actions(detail: UploadDetail) -> None:
 
     with col_download:
         report_text = (
-            "Upload ID,Fornecedor,Arquivo,Período,Versão,Status,Enviado por,Data\n"
+            "Upload ID,Distribuidor,Arquivo,Período,Versão,Status,Enviado por,Data\n"
             f"{detail.upload_id},{detail.supplier_name},{detail.file_name},"
             f"{detail.period},{detail.version},{detail.status.upper()},"
             f"{detail.uploaded_by},{detail.sent_at}\n"
@@ -414,7 +414,7 @@ def _render_impl() -> None:
             '<div>'
             '<p class="kmt-alert-title">Nenhum envio selecionado</p>'
             '<p class="kmt-alert-body">'
-            'Acesse o painel ou a lista de fornecedores para selecionar '
+            'Acesse o painel ou a lista de distribuidores para selecionar '
             'um envio e visualizar seus detalhes.'
             '</p></div></div>',
             unsafe_allow_html=True,

@@ -248,7 +248,7 @@ def validate_forecast(
                 if not _supplier_match(cell_str, supplier_name):
                     errors.append(_err(
                         linha, sup_col, cell_str,
-                        "Fornecedor incompatível",
+                        "Distribuidor incompatível",
                         (f"O arquivo deve pertencer a '{supplier_name}'. "
                          f"Valor encontrado na planilha: '{cell_str}'"),
                     ))

@@ -23,9 +23,9 @@ _logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _STATUS_LABELS = {
-    "invalid": "Invalido",
-    "valid": "Valido/Ativo",
-    "replaced": "Substituido",
+    "invalid": "Inválido",
+    "valid": "Válido/Ativo",
+    "replaced": "Substituído",
     "canceled": "Cancelado",
 }
 _LABEL_TO_STATUS = {v: k for k, v in _STATUS_LABELS.items()}
@@ -68,9 +68,9 @@ def _cb_cancelar(upload_id: str, supplier_id: str, user_email: str) -> None:
 def _render_page_header() -> None:
     st.markdown(
         '<div class="kmt-section">'
-        '<p class="kmt-section-title">Historico de Envios</p>'
+        '<p class="kmt-section-title">Histórico de Envios</p>'
         '<p class="kmt-section-subtitle">'
-        'Selecione o tipo de relatorio para consultar seus envios.'
+        'Selecione o tipo de relatório para consultar seus envios.'
         '</p></div>',
         unsafe_allow_html=True,
     )
@@ -85,8 +85,8 @@ def _render_summary_cards(records: list[UploadRecord]) -> None:
 
     render_cards_row([
         metric_card("Total de Envios", str(total)),
-        metric_card("Versao Ativa", active_version),
-        metric_card("Validos", str(valid_count)),
+        metric_card("Versão Ativa", active_version),
+        metric_card("Válidos", str(valid_count)),
         metric_card("Com Erro", str(invalid_count)),
     ])
 
@@ -104,7 +104,7 @@ def _render_table_with_actions(records: list[UploadRecord]) -> None:
 
     # Cabecalho
     hdr = st.columns(_COLS)
-    labels = ["Arquivo", "Periodo", "Versao", "Status", "Data Envio", "Validas", "Erros", "Acoes"]
+    labels = ["Arquivo", "Período", "Versão", "Status", "Data Envio", "Válidas", "Erros", "Ações"]
     for col, lbl in zip(hdr, labels):
         with col:
             st.markdown(
@@ -222,7 +222,7 @@ def render() -> None:
         _render_impl()
     except Exception as exc:
         _logger.exception("Erro ao renderizar Meus Envios: %s", exc)
-        st.error("Nao foi possivel carregar estas informacoes no momento. Tente novamente em alguns instantes.")
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
 
 
 def _render_impl() -> None:
@@ -244,7 +244,7 @@ def _render_impl() -> None:
     type_options = ["Selecione..."] + enabled_types
 
     selected_type = st.selectbox(
-        "Tipo de Relatorio",
+        "Tipo de Relatório",
         options=type_options,
         index=0,
         key="hist_report_type",
@@ -253,7 +253,7 @@ def _render_impl() -> None:
     if selected_type == "Selecione...":
         st.markdown(
             '<div style="padding:24px 0;font-size:14px;color:#6B7280;text-align:center;">'
-            'Selecione um tipo de relatorio para consultar seu historico de envios.'
+            'Selecione um tipo de relatório para consultar seu histórico de envios.'
             '</div>',
             unsafe_allow_html=True,
         )

@@ -100,8 +100,8 @@ def _render_page_header() -> None:
         '<div class="kmt-section">'
         '<p class="kmt-section-title">Painel de Coleta de Forecast</p>'
         '<p class="kmt-section-subtitle">'
-        'Acompanhamento do ciclo de envio de forecast por fornecedor. '
-        'Utilize os filtros abaixo para selecionar período e fornecedores.'
+        'Acompanhamento do ciclo de envio de forecast por distribuidor. '
+        'Utilize os filtros abaixo para selecionar período e distribuidores.'
         '</p></div>',
         unsafe_allow_html=True,
     )
@@ -145,7 +145,7 @@ def _render_filters(periods: list[str]) -> tuple[str, list[str], list[str]]:
 
     with col2:
         selected_suppliers = st.multiselect(
-            "Todos os fornecedores",
+            "Todos os distribuidores",
             options=supplier_names,
             default=[],
             key="adm_filter_supplier",
@@ -180,19 +180,19 @@ def _render_kpi_cards(rows: list[dict], period_lbl: str, canceled_count: int = 0
         kpi_card("Participantes",             str(participantes)),
         kpi_card("Recebidos",                 str(recebidos)),
         kpi_card("Pendentes",                 str(pendentes)),
-        kpi_card("Cancelamentos no Periodo",  str(canceled_count)),
+        kpi_card("Cancelamentos no Período",  str(canceled_count)),
     ])
 
     if pendentes > 0:
         st.markdown(
             f'<p style="font-size:12px;color:#B45309;font-weight:600;margin:6px 0 0 2px;">'
-            f'&#9888;&nbsp;&nbsp;{pendentes} fornecedor(es) sem envio valido no periodo.</p>',
+            f'&#9888;&nbsp;&nbsp;{pendentes} distribuidor(es) sem envio valido no periodo.</p>',
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
             f'<p style="font-size:12px;color:#15803D;font-weight:600;margin:6px 0 0 2px;">'
-            f'&#10003;&nbsp;&nbsp;Todos os {participantes} fornecedores '
+            f'&#10003;&nbsp;&nbsp;Todos os {participantes} distribuidores '
             f'entregaram envio valido no periodo.</p>',
             unsafe_allow_html=True,
         )
@@ -206,9 +206,9 @@ def _render_kpi_cards(rows: list[dict], period_lbl: str, canceled_count: int = 0
 
     st.markdown(
         f'<p style="font-size:11px;color:#9CA3AF;margin:4px 0 12px 2px;">'
-        f'Periodo: <strong style="color:#6B7280;">{period_lbl}</strong>'
+        f'Período: <strong style="color:#6B7280;">{period_lbl}</strong>'
         f'&nbsp;&middot;&nbsp;'
-        f'<strong>Participantes</strong> = fornecedores ativos'
+        f'<strong>Participantes</strong> = distribuidores ativos'
         f'&nbsp;&middot;&nbsp;'
         f'<strong>Recebidos</strong> = com envio valido atual'
         f'&nbsp;&middot;&nbsp;'
@@ -237,8 +237,8 @@ def _render_status_table(rows: list[dict], period_lbl: str) -> None:
     """
     st.markdown(
         '<div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">'
-        f'<span class="kmt-card-label">Status por Fornecedor \u2014 {period_lbl}</span>'
-        f'<span style="font-size:11px;color:#9CA3AF;margin-left:12px;">{len(rows)} fornecedor(es)</span>'
+        f'<span class="kmt-card-label">Status por Distribuidor \u2014 {period_lbl}</span>'
+        f'<span style="font-size:11px;color:#9CA3AF;margin-left:12px;">{len(rows)} distribuidor(es)</span>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -246,7 +246,7 @@ def _render_status_table(rows: list[dict], period_lbl: str) -> None:
     if not rows:
         st.markdown(
             '<div style="padding:30px;text-align:center;color:#9CA3AF;font-size:13px;">'
-            'Nenhum fornecedor encontrado para os filtros selecionados.'
+            'Nenhum distribuidor encontrado para os filtros selecionados.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -254,7 +254,7 @@ def _render_status_table(rows: list[dict], period_lbl: str) -> None:
 
     # Cabecalho
     hdr = st.columns(_ADM_COLS)
-    labels = ["Fornecedor", "Codigo", "Periodo", "Status", "Ultimo Envio", "Versao", "Acoes"]
+    labels = ["Distribuidor", "Código", "Período", "Status", "Último Envio", "Versão", "Ações"]
     for col, lbl in zip(hdr, labels):
         with col:
             st.markdown(
@@ -368,7 +368,7 @@ def _render_quick_nav() -> None:
 
     with col1:
         if st.button(
-            "🏭  Gestão de Fornecedores",
+            "🏭  Gestão de Distribuidores",
             key="dn_suppliers",
             use_container_width=True,
         ):

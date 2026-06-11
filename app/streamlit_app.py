@@ -124,13 +124,13 @@ def _render_login() -> None:
         if login_mode == "supplier":
             # ── Etapa 2: login por e-mail digitado ────────────────────────────
             st.markdown(
-                '<p class="kmt-login-access-label">Acesso como Fornecedor</p>',
+                '<p class="kmt-login-access-label">Acesso como Distribuidor</p>',
                 unsafe_allow_html=True,
             )
 
             email_typed = st.text_input(
                 "Digite seu e-mail:",
-                placeholder="fornecedor@empresa.com",
+                placeholder="distribuidor@empresa.com",
                 key="login_email_input",
                 label_visibility="visible",
             )
@@ -153,7 +153,7 @@ def _render_login() -> None:
                         )
                     elif supplier.status != "active":
                         st.warning(
-                            "Fornecedor inativo. Entre em contato com a Komatsu "
+                            "Distribuidor inativo. Entre em contato com a Komatsu "
                             "para regularizar o acesso."
                         )
                     else:
@@ -175,7 +175,7 @@ def _render_login() -> None:
 
             # Botão Fornecedor
             st.markdown('<div class="kmt-btn-yellow">', unsafe_allow_html=True)
-            if st.button("Entrar como Fornecedor", key="login_supplier",
+            if st.button("Entrar como Distribuidor", key="login_supplier",
                          use_container_width=True):
                 st.session_state.login_mode = "supplier"
                 safe_rerun()
@@ -220,7 +220,7 @@ def _render_supplier_home() -> None:
     """Dashboard do fornecedor — resumo dos uploads (Snowflake como fonte principal)."""
 
     supplier_id   = st.session_state.get("supplier_id") or ""
-    supplier_name = st.session_state.get("user_name", "Fornecedor")
+    supplier_name = st.session_state.get("user_name", "Distribuidor")
 
     # Fonte de verdade: Snowflake. Fallback: session_state.
     sf_recs = get_supplier_upload_batches(supplier_id)
@@ -350,7 +350,7 @@ def _render_supplier_home() -> None:
                 title="Aviso de Privacidade",
                 body=(
                     "Você visualiza apenas os envios e históricos "
-                    f"relacionados ao seu fornecedor ({supplier_name})."
+                    f"relacionados ao seu distribuidor ({supplier_name})."
                 ),
                 version="v1.2.0-MVP",
             ),
@@ -360,7 +360,7 @@ def _render_supplier_home() -> None:
 
 # --- Roteador de páginas -----------------------------------------------------
 _PAGE_TITLES = {
-    "home":                 "Dashboard do Fornecedor",
+    "home":                 "Dashboard do Distribuidor",
     "upload":               "Submeter Novo Arquivo",
     "history":              "Meus Envios",
     "errors":               "Erros / Relatório de Correção",
@@ -368,7 +368,7 @@ _PAGE_TITLES = {
     "admin_windows":        "Janelas de Envio",
     "stock_validated":      "Estoques Validados",
     "validated_data":       "Forecasts Validados",
-    "admin_suppliers":      "Gestão de Fornecedores",
+    "admin_suppliers":      "Gestão de Distribuidores",
     "admin_upload_detail":  "Detalhe do Envio",
 }
 

@@ -51,11 +51,11 @@ def _cb_inativar(code: str, name: str) -> None:
     supplier = get_supplier_by_code(code)
     if supplier and update_supplier_status(supplier.supplier_id, "inactive"):
         st.session_state.supplier_status_msg = (
-            f"Fornecedor **{name}** inativado com sucesso."
+            f"Distribuidor **{name}** inativado com sucesso."
         )
     else:
         st.session_state.supplier_status_msg = (
-            f"Erro ao inativar fornecedor **{name}**."
+            f"Erro ao inativar distribuidor **{name}**."
         )
     if st.session_state.get("selected_supplier_code") == code:
         st.session_state.selected_supplier_code = None
@@ -66,11 +66,11 @@ def _cb_ativar(code: str, name: str) -> None:
     supplier = get_supplier_by_code(code)
     if supplier and update_supplier_status(supplier.supplier_id, "active"):
         st.session_state.supplier_status_msg = (
-            f"Fornecedor **{name}** ativado com sucesso."
+            f"Distribuidor **{name}** ativado com sucesso."
         )
     else:
         st.session_state.supplier_status_msg = (
-            f"Erro ao ativar fornecedor **{name}**."
+            f"Erro ao ativar distribuidor **{name}**."
         )
 
 
@@ -135,9 +135,9 @@ def _render_page_header() -> None:
     with col_title:
         st.markdown(
             '<div class="kmt-section" style="margin-bottom:0;">'
-            '<p class="kmt-section-title">Gestão de Fornecedores</p>'
+            '<p class="kmt-section-title">Gestão de Distribuidores</p>'
             '<p class="kmt-section-subtitle">'
-            'Cadastre, acompanhe e gerencie os fornecedores participantes '
+            'Cadastre, acompanhe e gerencie os distribuidores participantes '
             f'da coleta de forecast — <strong>{period}</strong>.'
             '</p></div>',
             unsafe_allow_html=True,
@@ -146,7 +146,7 @@ def _render_page_header() -> None:
     with col_btn:
         st.markdown('<div style="padding-top:14px;"></div>', unsafe_allow_html=True)
         current_mode = st.session_state.get("suppliers_form_mode")
-        btn_label    = "✕  Fechar formulário" if current_mode == "add" else "＋  Cadastrar Fornecedor"
+        btn_label    = "✕  Fechar formulário" if current_mode == "add" else "＋  Cadastrar Distribuidor"
         if st.button(btn_label, key="btn_add_supplier", use_container_width=True):
             if current_mode == "add":
                 st.session_state.suppliers_form_mode = None
@@ -208,7 +208,7 @@ def _render_supplier_form() -> None:
             defaults = {"name": s.name, "email": s.email, "status": s.status}
 
     auto_code  = get_next_supplier_code() if mode == "add" else edit_code
-    form_title = "Cadastrar Fornecedor" if mode == "add" else f"Editar: {defaults['name']}"
+    form_title = "Cadastrar Distribuidor" if mode == "add" else f"Editar: {defaults['name']}"
 
     with st.expander(f"📝  {form_title}", expanded=True):
 
@@ -225,14 +225,14 @@ def _render_supplier_form() -> None:
             col_nome, col_email = st.columns([3, 3])
             with col_nome:
                 nome = st.text_input(
-                    "Nome do fornecedor",
+                    "Nome do distribuidor",
                     value=defaults["name"],
                     placeholder="Ex: Distribuidora Centro Ltda",
                     key="sf_nome",
                 )
             with col_email:
                 email_input = st.text_input(
-                    "E-mail do fornecedor",
+                    "E-mail do distribuidor",
                     value=defaults["email"],
                     placeholder="Ex: contato@distribuidora.com",
                     key="sf_email",
@@ -249,7 +249,7 @@ def _render_supplier_form() -> None:
 
             col_save, col_cancel, _ = st.columns([2, 2, 6])
             with col_save:
-                save_label = "Salvar fornecedor" if mode == "add" else "Salvar alterações"
+                save_label = "Salvar distribuidor" if mode == "add" else "Salvar alterações"
                 submitted  = st.form_submit_button(save_label, use_container_width=True)
             with col_cancel:
                 cancelled = st.form_submit_button("Cancelar", use_container_width=True)
@@ -265,13 +265,13 @@ def _render_supplier_form() -> None:
         error_msg   = None
 
         if not nome_clean:
-            error_msg = "O nome do fornecedor é obrigatório."
+            error_msg = "O nome do distribuidor é obrigatório."
         elif not email_clean:
-            error_msg = "O e-mail do fornecedor é obrigatório."
+            error_msg = "O e-mail do distribuidor é obrigatório."
         elif not _is_valid_email(email_clean):
             error_msg = f"O e-mail **{email_clean}** não tem um formato válido."
         elif _email_exists(email_clean, exclude_code=(edit_code if mode == "edit" else None)):
-            error_msg = f"Já existe um fornecedor cadastrado com o e-mail **{email_clean}**."
+            error_msg = f"Já existe um distribuidor cadastrado com o e-mail **{email_clean}**."
 
         if error_msg:
             st.error(error_msg)
@@ -283,21 +283,21 @@ def _render_supplier_form() -> None:
             result = create_supplier(nome_clean, email_clean, supplier_status)
             if result is None:
                 st.error(
-                    "Falha ao gravar fornecedor no Snowflake. "
+                    "Falha ao gravar distribuidor no Snowflake. "
                     "Verifique a conexão e tente novamente."
                 )
                 return
         else:
             supplier = get_supplier_by_code(edit_code)
             if supplier is None:
-                st.error("Fornecedor não encontrado para edição.")
+                st.error("Distribuidor não encontrado para edição.")
                 return
             success = update_supplier(
                 supplier.supplier_id, nome_clean, email_clean, supplier_status
             )
             if not success:
                 st.error(
-                    "Falha ao atualizar fornecedor no Snowflake. "
+                    "Falha ao atualizar distribuidor no Snowflake. "
                     "Verifique a conexão e tente novamente."
                 )
                 return
@@ -329,8 +329,8 @@ def _render_summary_cards(status_rows: list[dict]) -> None:
     cancelados = get_canceled_uploads_count(current_period) if current_period else 0
 
     render_cards_row([
-        metric_card("Fornecedores Ativos",   str(summary["total_active"])),
-        metric_card("Fornecedores Inativos", str(summary["total_inactive"])),
+        metric_card("Distribuidores Ativos",   str(summary["total_active"])),
+        metric_card("Distribuidores Inativos", str(summary["total_inactive"])),
         metric_card("Pendentes no Período",  str(pendentes)),
         metric_card("Envios Cancelados",     str(cancelados)),
     ])
@@ -357,7 +357,7 @@ def _render_filters(suppliers: list[SupplierRecord]) -> list[SupplierRecord]:
     with col_search:
         search_term = st.text_input(
             "Buscar",
-            placeholder="Buscar por nome ou código do fornecedor",
+            placeholder="Buscar por nome ou código do distribuidor",
             key="flt_search",
             label_visibility="collapsed",
         )
@@ -371,7 +371,7 @@ def _render_filters(suppliers: list[SupplierRecord]) -> list[SupplierRecord]:
 
     with col1:
         sel_suppliers = st.multiselect(
-            "Todos os fornecedores",
+            "Todos os distribuidores",
             options=supplier_names,
             default=[],
             key="flt_supplier",
@@ -425,7 +425,7 @@ def _render_filters(suppliers: list[SupplierRecord]) -> list[SupplierRecord]:
     # 5. Limite de exibição
     if len(result) > _DISPLAY_LIMIT:
         st.info(
-            f"Exibindo os primeiros {_DISPLAY_LIMIT} de {len(result)} fornecedores. "
+            f"Exibindo os primeiros {_DISPLAY_LIMIT} de {len(result)} distribuidores. "
             f"Use os filtros ou a busca para refinar."
         )
         result = result[:_DISPLAY_LIMIT]
@@ -453,7 +453,7 @@ def _render_suppliers_table(
     # ── Cabeçalho ────────────────────────────────────────────────────────────
     hdr    = st.columns(_COLS)
     labels = [
-        "Fornecedor", "E-mail", "Código", "Status",
+        "Distribuidor", "E-mail", "Código", "Status",
         "Último Envio", f"Status {_current_period_label()}", "Ações",
     ]
     for col, lbl in zip(hdr, labels):
@@ -472,7 +472,7 @@ def _render_suppliers_table(
     if not suppliers:
         st.markdown(
             '<p style="font-size:13px;color:#9CA3AF;padding:16px 0;">'
-            'Nenhum fornecedor encontrado para os filtros selecionados.</p>',
+            'Nenhum distribuidor encontrado para os filtros selecionados.</p>',
             unsafe_allow_html=True,
         )
         return
@@ -644,7 +644,7 @@ def _render_supplier_detail(code: str) -> None:
                         border-bottom:1px solid #F3F4F6;">
                 <div>
                     <p class="kmt-card-label" style="margin-bottom:4px;">
-                        Detalhe do Fornecedor
+                        Detalhe do Distribuidor
                     </p>
                     <p style="font-size:18px;font-weight:700;color:#002B5C;margin:0;">
                         {s.name}
@@ -709,7 +709,7 @@ def render() -> None:
         _render_impl()
     except Exception as exc:
         from utils.logger import get_logger
-        get_logger(__name__).exception("Erro ao renderizar Gestão de Fornecedores: %s", exc)
+        get_logger(__name__).exception("Erro ao renderizar Gestão de Distribuidores: %s", exc)
         st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
 
 
@@ -731,7 +731,7 @@ def _render_impl() -> None:
     status_msg = st.session_state.get("supplier_status_msg")
     if saved_msg:
         st.session_state.suppliers_just_saved = None
-        st.success(f"Fornecedor **{saved_msg}** salvo com sucesso.")
+        st.success(f"Distribuidor **{saved_msg}** salvo com sucesso.")
     if status_msg:
         st.session_state.supplier_status_msg = None
         st.success(status_msg)
@@ -747,10 +747,10 @@ def _render_impl() -> None:
             <div class="kmt-alert kmt-alert--info" style="margin-top:16px;">
                 <div class="kmt-alert-icon">📋</div>
                 <div>
-                    <p class="kmt-alert-title">Nenhum fornecedor cadastrado.</p>
+                    <p class="kmt-alert-title">Nenhum distribuidor cadastrado.</p>
                     <p class="kmt-alert-body">
-                        Clique em "＋ Cadastrar Fornecedor" para adicionar
-                        o primeiro fornecedor participante da coleta.
+                        Clique em "＋ Cadastrar Distribuidor" para adicionar
+                        o primeiro distribuidor participante da coleta.
                     </p>
                 </div>
             </div>

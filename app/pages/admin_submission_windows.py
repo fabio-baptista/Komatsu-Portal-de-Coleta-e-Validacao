@@ -128,7 +128,7 @@ def _render_current_window(report_type: str) -> None:
             f'<p class="kmt-alert-title">Nenhuma janela de envio aberta para {report_type}</p>'
             '<p class="kmt-alert-body">'
             'Crie ou abra uma janela para iniciar o ciclo de coleta. '
-            'Fornecedores nao poderao enviar arquivos enquanto nao houver janela aberta.'
+            'Distribuidores não poderão enviar arquivos enquanto não houver janela aberta.'
             '</p></div></div>',
             unsafe_allow_html=True,
         )
@@ -158,7 +158,7 @@ def _render_create_form() -> None:
         today = date.today()
         suggested_period = f"{today.year}-{today.month:02d}"
         reference_period = st.text_input(
-            "Periodo de Referencia (YYYY-MM)",
+            "Período de Referência (YYYY-MM)",
             value=suggested_period,
             key="win_form_period",
             max_chars=7,
@@ -187,7 +187,7 @@ def _render_create_form() -> None:
             # Validacoes
             import re
             if not re.match(r"^\d{4}-\d{2}$", reference_period):
-                st.error("Periodo deve estar no formato YYYY-MM (ex: 2026-06).")
+                st.error("Período deve estar no formato YYYY-MM (ex: 2026-06).")
                 return
 
             if start_date > end_date:
@@ -195,7 +195,7 @@ def _render_create_form() -> None:
                 return
 
             if end_date < today:
-                st.error("A data final da janela nao pode ser anterior a data atual.")
+                st.error("A data final da janela não pode ser anterior à data atual.")
                 return
 
             created_by = st.session_state.get("user_email", "admin")
@@ -212,7 +212,7 @@ def _render_create_form() -> None:
                 safe_rerun()
             else:
                 st.error(
-                    "Nao foi possivel criar a janela. "
+                    "Não foi possível criar a janela. "
                     "Verifique se ja existe uma janela aberta sobreposta para este periodo."
                 )
 
@@ -330,7 +330,7 @@ def _render_windows_list() -> None:
                         safe_rerun()
                     else:
                         st.error(
-                            "Nao foi possivel abrir a janela. "
+                            "Não foi possível abrir a janela. "
                             "Verifique se ha outra janela aberta sobreposta."
                         )
 
@@ -346,7 +346,7 @@ def render() -> None:
     except Exception as exc:
         _logger.exception("Erro ao renderizar Janelas de Envio: %s", exc)
         st.error(
-            "Nao foi possivel carregar estas informacoes no momento. "
+            "Não foi possível carregar estas informações no momento. "
             "Tente novamente em alguns instantes."
         )
 

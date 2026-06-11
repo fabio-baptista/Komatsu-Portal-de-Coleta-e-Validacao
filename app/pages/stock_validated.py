@@ -55,7 +55,7 @@ def _render_page_header() -> None:
         '<div class="kmt-section">'
         '<p class="kmt-section-title">Estoques Validados</p>'
         '<p class="kmt-section-subtitle">'
-        'Consulte os dados de estoque validados enviados pelos fornecedores.'
+        'Consulte os dados de estoque validados enviados pelos distribuidores.'
         '</p></div>',
         unsafe_allow_html=True,
     )
@@ -70,7 +70,7 @@ def _render_table(df: pd.DataFrame) -> None:
             '<div>'
             '<p class="kmt-alert-title">Nenhum estoque validado disponivel.</p>'
             '<p class="kmt-alert-body">'
-            'Os dados aparecerao aqui apos os fornecedores enviarem relatorios de estoque.'
+            'Os dados aparecerão aqui após os distribuidores enviarem relatórios de estoque.'
             '</p></div></div>',
             unsafe_allow_html=True,
         )
@@ -86,7 +86,7 @@ def _render_table(df: pd.DataFrame) -> None:
 
     render_cards_row([
         metric_card("Registros", str(n_records)),
-        metric_card("Fornecedores", str(n_suppliers)),
+        metric_card("Distribuidores", str(n_suppliers)),
         metric_card("Qtd Total", f"{total_qty:,.0f}"),
         metric_card("Custo Total", f"R$ {total_cost:,.2f}"),
     ])
@@ -97,7 +97,7 @@ def _render_table(df: pd.DataFrame) -> None:
     col1, col2, col3 = st.columns(3)
     with col1:
         suppliers = sorted(df["SUPPLIER_NAME"].dropna().unique().tolist()) if "SUPPLIER_NAME" in df.columns else []
-        sel_sup = st.multiselect("Fornecedor", options=suppliers, key="stock_flt_sup")
+        sel_sup = st.multiselect("Distribuidor", options=suppliers, key="stock_flt_sup")
     with col2:
         branches = sorted(df["BRANCH"].dropna().unique().tolist()) if "BRANCH" in df.columns else []
         sel_branch = st.multiselect("Filial", options=branches, key="stock_flt_branch")
@@ -115,7 +115,7 @@ def _render_table(df: pd.DataFrame) -> None:
 
     # Tabela HTML
     display_cols = [
-        ("SUPPLIER_NAME", "Fornecedor"),
+        ("SUPPLIER_NAME", "Distribuidor"),
         ("BRANCH", "Filial"),
         ("MATERIAL_CODE", "Material"),
         ("MATERIAL_DESCRIPTION", "Descricao"),
@@ -171,4 +171,4 @@ def render() -> None:
         _render_table(df)
     except Exception as exc:
         _logger.exception("Erro ao renderizar Estoques Validados: %s", exc)
-        st.error("Nao foi possivel carregar estas informacoes no momento. Tente novamente.")
+        st.error("Não foi possível carregar estas informações no momento. Tente novamente.")

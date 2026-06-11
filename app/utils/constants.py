@@ -62,7 +62,7 @@ UPLOAD_STATUS = {
 
 # Perfis de usuário
 USER_ROLES = {
-    "supplier": "Fornecedor",
+    "supplier": "Distribuidor",
     "admin":    "Administrativo",
 }
 
