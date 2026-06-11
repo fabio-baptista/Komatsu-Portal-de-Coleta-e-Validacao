@@ -8,17 +8,20 @@ Ex: Pendente, Enviado, Validado, Rejeitado, Cancelado.
 
 # Configuração de cores e labels por status
 _STATUS_CONFIG: dict[str, dict] = {
-    # Status de upload
-    "valid":        {"bg": "#DCFCE7", "color": "#15803D", "label": "Válido/Ativo"},
-    "invalid":      {"bg": "#FEE2E2", "color": "#B91C1C", "label": "Inválido"},
-    "replaced":     {"bg": "#DBEAFE", "color": "#1D4ED8", "label": "Substituído"},
+    # Status de upload/arquivo
+    "valid":        {"bg": "#DCFCE7", "color": "#15803D", "label": "Valido/Ativo"},
+    "invalid":      {"bg": "#FEE2E2", "color": "#B91C1C", "label": "Invalido"},
+    "replaced":     {"bg": "#DBEAFE", "color": "#1D4ED8", "label": "Substituido"},
     "canceled":     {"bg": "#F3F4F6", "color": "#374151", "label": "Cancelado"},
     "processed":    {"bg": "rgba(0,43,92,0.1)", "color": "#002B5C", "label": "Processado"},
     "pending":      {"bg": "#FEF9C3", "color": "#854D0E", "label": "Pendente"},
+    # Status de coleta (painel admin)
+    "recebido":           {"bg": "#DCFCE7", "color": "#15803D", "label": "Recebido"},
+    "cancelled_pending":  {"bg": "#FED7AA", "color": "#9A3412", "label": "Cancelado/Pendente"},
     # Status de fornecedor
     "active":       {"bg": "#DCFCE7", "color": "#15803D", "label": "Ativo"},
     "inactive":     {"bg": "#F3F4F6", "color": "#6B7280", "label": "Inativo"},
-    "not_expected": {"bg": "#F3F4F6", "color": "#9CA3AF", "label": "Não esperado"},
+    "not_expected": {"bg": "#F3F4F6", "color": "#9CA3AF", "label": "Nao esperado"},
 }
 
 

@@ -21,6 +21,7 @@ _SUPPLIER_MENU = [
 _ADMIN_MENU = [
     {"icon": "📊", "label": "Painel de Coleta",    "page": "admin_dashboard"},
     {"icon": "📅", "label": "Janelas de Envio",   "page": "admin_windows"},
+    {"icon": "📦", "label": "Estoques Validados", "page": "stock_validated"},
     {"icon": "✅", "label": "Forecasts Validados", "page": "validated_data"},
     {"icon": "🏭", "label": "Fornecedores",        "page": "admin_suppliers"},
 ]

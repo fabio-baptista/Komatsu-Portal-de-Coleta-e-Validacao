@@ -16,7 +16,7 @@ from services.submission_window_service import (
     close_submission_window,
     open_submission_window,
 )
-from utils.constants import DEFAULT_REPORT_TYPE
+from utils.constants import DEFAULT_REPORT_TYPE, get_enabled_report_types
 from utils.logger import get_logger
 from utils.streamlit_compat import safe_rerun
 
@@ -88,9 +88,9 @@ def _render_page_header() -> None:
     )
 
 
-def _render_current_window() -> None:
-    """Mostra a janela aberta atual ou aviso se nenhuma."""
-    window = get_current_open_window()
+def _render_current_window(report_type: str) -> None:
+    """Mostra a janela aberta atual para o report_type selecionado."""
+    window = get_current_open_window(report_type)
 
     if window and window.get("window_id") == "__MOCK__":
         st.markdown(
@@ -114,7 +114,7 @@ def _render_current_window() -> None:
             '<div>'
             '<p class="kmt-alert-title">Janela aberta</p>'
             '<p class="kmt-alert-body">'
-            f'<strong>{window.get("report_type", DEFAULT_REPORT_TYPE)}</strong>'
+            f'<strong>{window.get("report_type", report_type)}</strong>'
             f' &mdash; Periodo: <strong>{window.get("reference_period", "")}</strong>'
             f' &mdash; {window.get("start_date", "")} a {window.get("end_date", "")}'
             '</p></div></div>',
@@ -125,7 +125,7 @@ def _render_current_window() -> None:
             '<div class="kmt-alert kmt-alert--error" style="margin-bottom:12px;">'
             '<div class="kmt-alert-icon">&#10060;</div>'
             '<div>'
-            '<p class="kmt-alert-title">Nenhuma janela de envio aberta</p>'
+            f'<p class="kmt-alert-title">Nenhuma janela de envio aberta para {report_type}</p>'
             '<p class="kmt-alert-body">'
             'Crie ou abra uma janela para iniciar o ciclo de coleta. '
             'Fornecedores nao poderao enviar arquivos enquanto nao houver janela aberta.'
@@ -148,7 +148,7 @@ def _render_create_form() -> None:
     with col1:
         report_type = st.selectbox(
             "Tipo de Relatorio",
-            options=[DEFAULT_REPORT_TYPE],
+            options=get_enabled_report_types(),
             index=0,
             key="win_form_report_type",
         )
@@ -360,7 +360,16 @@ def _render_impl() -> None:
     if success_msg:
         st.success(success_msg)
 
-    _render_current_window()
+    # Seletor de tipo para o card de janela aberta
+    enabled_types = get_enabled_report_types()
+    selected_type = st.selectbox(
+        "Visualizar janela aberta para",
+        options=enabled_types,
+        index=0,
+        key="win_view_report_type",
+    )
+
+    _render_current_window(selected_type)
 
     st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
     _render_create_form()

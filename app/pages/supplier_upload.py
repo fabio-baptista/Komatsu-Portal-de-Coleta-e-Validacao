@@ -14,64 +14,57 @@ import streamlit as st
 from components.cards import metric_card, render_cards_row
 from components.tables import errors_table
 from services.mock_data_service import get_current_open_window
+from services.submission_window_service import get_current_open_window as get_window_for_type
 from services.validation_service import ValidationResult
 from services.forecast_service import NormalizationResult
 from services.upload_service import persist_upload_batch, persist_validation_errors
 from utils.file_reader import normalize_columns, read_excel_file, read_uploaded_file, build_error_report
 from utils.logger import get_logger
-from utils.constants import DEFAULT_REPORT_TYPE, get_report_type_config
+from utils.constants import DEFAULT_REPORT_TYPE, get_report_type_config, get_enabled_report_types
 from utils.session_state import register_upload, register_validated_forecast
 from utils.streamlit_compat import safe_rerun
 
 _logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Configuração do tipo de relatório ativo (via registry)
+# Configuração do tipo de relatório é resolvida dinamicamente em _render_impl()
+# via selectbox de report_type.
 # ---------------------------------------------------------------------------
-_report_config = get_report_type_config(DEFAULT_REPORT_TYPE)
-
-# Caminhos oficiais dos templates (derivados do registry)
-_TEMPLATE_PATH      = Path(__file__).parent.parent / "templates" / _report_config["template_xlsx"]
-_TEMPLATE_CSV_PATH  = Path(__file__).parent.parent / "templates" / _report_config["template_csv"]
-
-# Colunas esperadas no template (exibidas ao fornecedor)
-_EXPECTED_COLUMNS: list[str] = _report_config["expected_columns"]
-
-# Funções de validação, normalização e persistência (do registry)
-_validate_file     = _report_config["validator"]
-_normalize_file    = _report_config["normalizer"]
-_persist_trusted   = _report_config["persist_trusted"]
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
 # ---------------------------------------------------------------------------
 # Seção 1 — Template
 # ---------------------------------------------------------------------------
 
-def _render_template_section() -> None:
+def _render_template_section(report_config: dict) -> None:
     """Seção de download dos templates oficiais (XLSX e CSV)."""
+    report_label = report_config.get("label", "")
     st.markdown(
         '<div class="kmt-section">'
         '<p class="kmt-section-title">Baixar template oficial</p>'
         '<p class="kmt-section-subtitle">'
-        'Use o template abaixo como base para preencher os dados de forecast. '
+        f'Use o template abaixo como base para preencher os dados de {report_label}. '
         'Não altere os nomes das colunas.'
         '</p></div>',
         unsafe_allow_html=True,
     )
 
-    xlsx_exists = _TEMPLATE_PATH.exists() and _TEMPLATE_PATH.stat().st_size > 0
-    csv_exists  = _TEMPLATE_CSV_PATH.exists() and _TEMPLATE_CSV_PATH.stat().st_size > 0
+    template_xlsx = _TEMPLATES_DIR / report_config["template_xlsx"]
+    template_csv = _TEMPLATES_DIR / report_config["template_csv"]
+    xlsx_exists = template_xlsx.exists() and template_xlsx.stat().st_size > 0
+    csv_exists = template_csv.exists() and template_csv.stat().st_size > 0
 
     if xlsx_exists or csv_exists:
         col_xlsx, col_csv, col_info, _ = st.columns([2, 2, 4, 1])
 
         with col_xlsx:
             if xlsx_exists:
-                with open(_TEMPLATE_PATH, "rb") as f:
+                with open(template_xlsx, "rb") as f:
                     st.download_button(
                         label="⬇  Baixar Template XLSX",
                         data=f,
-                        file_name="template_forecast.xlsx",
+                        file_name=report_config["template_xlsx"],
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                     )
@@ -85,11 +78,11 @@ def _render_template_section() -> None:
 
         with col_csv:
             if csv_exists:
-                with open(_TEMPLATE_CSV_PATH, "rb") as f:
+                with open(template_csv, "rb") as f:
                     st.download_button(
                         label="⬇  Baixar Template CSV",
                         data=f,
-                        file_name="template_forecast.csv",
+                        file_name=report_config["template_csv"],
                         mime="text/csv",
                         use_container_width=True,
                     )
@@ -125,11 +118,11 @@ def _render_template_section() -> None:
 # Seção 2 — Colunas esperadas (exibidas como referência)
 # ---------------------------------------------------------------------------
 
-def _render_expected_columns() -> None:
-    """Card com as colunas esperadas no arquivo de forecast."""
-    mid = len(_EXPECTED_COLUMNS) // 2
-    left  = _EXPECTED_COLUMNS[:mid]
-    right = _EXPECTED_COLUMNS[mid:]
+def _render_expected_columns(expected_columns: list[str]) -> None:
+    """Card com as colunas esperadas no arquivo."""
+    mid = len(expected_columns) // 2
+    left = expected_columns[:mid]
+    right = expected_columns[mid:]
 
     left_html  = "".join(
         f'<div style="font-size:12px;color:#374151;padding:3px 0;">'
@@ -157,16 +150,17 @@ def _render_expected_columns() -> None:
 # Área de upload de arquivo
 # ---------------------------------------------------------------------------
 
-def _render_upload_area() -> tuple[pd.DataFrame | None, str | None, str | None]:
+def _render_upload_area(report_key: str = "") -> tuple[pd.DataFrame | None, str | None, str | None]:
     """
     Renderiza o file uploader e, se necessário, o seletor de aba.
     Retorna (DataFrame | None, nome_do_arquivo | None, erro | None).
     """
     uploaded = st.file_uploader(
-        "Selecione o arquivo de forecast",
+        "Selecione o arquivo",
         type=["xlsx", "csv"],
         help="Formatos aceitos: .xlsx e .csv · Limite: 50 MB",
         label_visibility="collapsed",
+        key=f"file_uploader_{report_key}",
     )
 
     if uploaded is None:
@@ -402,16 +396,41 @@ def render() -> None:
 
 def _render_impl() -> None:
     """Implementação interna da tela de upload."""
+
+    # --- Seletor de tipo de relatório -----------------------------------------
+    enabled_types = get_enabled_report_types()
+    selected_type = st.selectbox(
+        "Tipo de Relatório",
+        options=enabled_types,
+        index=0,
+        key="upload_report_type",
+    )
+    report_config = get_report_type_config(selected_type)
+    report_type = selected_type
+
+    # Detectar troca de tipo e limpar estado do upload anterior
+    _prev_type = st.session_state.get("_upload_last_report_type")
+    if _prev_type and _prev_type != selected_type:
+        st.session_state.upload_validate_pending = False
+        st.session_state.upload_current_file_key = None
+        st.session_state.last_processed_file = None
+    st.session_state["_upload_last_report_type"] = selected_type
+
+    # Funções resolvidas do registry
+    _validate_file = report_config["validator"]
+    _normalize_file = report_config["normalizer"]
+    _persist_trusted = report_config["persist_trusted"]
+
     # --- Seção 1: Template ---------------------------------------------------
-    _render_template_section()
+    _render_template_section(report_config)
 
     st.markdown('<div class="kmt-divider"></div>', unsafe_allow_html=True)
 
     # --- Verificar janela de envio ANTES de permitir upload -------------------
-    window = get_current_open_window()
+    window = get_window_for_type(report_type)
     if not window:
         st.warning(
-            "A janela de envio esta fechada no momento. "
+            f"A janela de envio de {report_config['label']} esta fechada no momento. "
             "Entre em contato com a Komatsu."
         )
         return
@@ -419,7 +438,7 @@ def _render_impl() -> None:
     # --- Seção 2: Upload -----------------------------------------------------
     st.markdown(
         '<div class="kmt-section" style="margin-top:8px;">'
-        '<p class="kmt-section-title">Enviar arquivo de forecast</p>'
+        f'<p class="kmt-section-title">Enviar arquivo de {report_config["label"]}</p>'
         '<p class="kmt-section-subtitle">'
         'Selecione um arquivo <strong>.xlsx</strong> ou <strong>.csv</strong> '
         'preenchido com o template oficial.'
@@ -432,14 +451,14 @@ def _render_impl() -> None:
     with col_upload:
         st.markdown(
             '<div class="kmt-card" style="margin-bottom:16px;">'
-            '<p class="kmt-card-label" style="margin-bottom:12px;">Arquivo de Forecast</p>'
+            f'<p class="kmt-card-label" style="margin-bottom:12px;">Arquivo de {report_config["label"]}</p>'
             "</div>",
             unsafe_allow_html=True,
         )
-        df, file_name, read_error = _render_upload_area()
+        df, file_name, read_error = _render_upload_area(report_config["key"])
 
     with col_check:
-        _render_expected_columns()
+        _render_expected_columns(report_config["expected_columns"])
 
     # --- Erro de leitura -----------------------------------------------------
     if df is None and read_error:
@@ -500,7 +519,7 @@ def _render_impl() -> None:
         )
 
         # Determinar REFERENCE_PERIOD a partir da janela aberta (não da planilha)
-        window = get_current_open_window()
+        window = get_window_for_type(report_type)
         if not window:
             st.error(
                 "A janela de envio está fechada. "
@@ -508,9 +527,8 @@ def _render_impl() -> None:
             )
             return
         period = window["period"]  # Ex: "2026-05"
-        report_type = DEFAULT_REPORT_TYPE
 
-        # Normalização para obter staging_dataframe (FORECAST_PERIOD vem do arquivo)
+        # Normalização para obter staging_dataframe
         norm_result = _normalize_file(
             normalized_df=result.normalized_dataframe,
             supplier_id=supplier_id,
@@ -617,7 +635,7 @@ def _render_impl() -> None:
         )
         if not already_registered:
             # REFERENCE_PERIOD vem da janela aberta (não da planilha)
-            window = get_current_open_window()
+            window = get_window_for_type(report_type)
             if not window:
                 st.error(
                     "A janela de envio está fechada. "
@@ -625,7 +643,6 @@ def _render_impl() -> None:
                 )
                 return
             period      = window["period"]
-            report_type = DEFAULT_REPORT_TYPE
             errors_list = result.errors_dataframe.to_dict("records")
 
             # Timestamp oficial do envio inválido

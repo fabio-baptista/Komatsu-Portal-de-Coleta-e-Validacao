@@ -29,6 +29,7 @@ from pages.validated_data import render as render_validated_data
 from pages.admin_upload_detail import render as render_upload_detail
 from pages.admin_dashboard import render as render_admin_dashboard
 from pages.admin_submission_windows import render as render_admin_windows
+from pages.stock_validated import render as render_stock_validated
 from utils.session_state import init_state as _init_session, get_session_uploads
 from services.auth_service import do_admin_login
 
@@ -360,11 +361,12 @@ def _render_supplier_home() -> None:
 # --- Roteador de páginas -----------------------------------------------------
 _PAGE_TITLES = {
     "home":                 "Dashboard do Fornecedor",
-    "upload":               "Submeter Novo Forecast",
+    "upload":               "Submeter Novo Arquivo",
     "history":              "Meus Envios",
     "errors":               "Erros / Relatório de Correção",
     "admin_dashboard":      "Painel Administrativo de Coleta",
     "admin_windows":        "Janelas de Envio",
+    "stock_validated":      "Estoques Validados",
     "validated_data":       "Forecasts Validados",
     "admin_suppliers":      "Gestão de Fornecedores",
     "admin_upload_detail":  "Detalhe do Envio",
@@ -499,6 +501,8 @@ def main() -> None:
         render_admin_dashboard()
     elif page == "admin_windows" and role == "admin":
         render_admin_windows()
+    elif page == "stock_validated" and role == "admin":
+        render_stock_validated()
     elif page == "admin_suppliers" and role == "admin":
         render_admin_suppliers()
     elif page == "validated_data" and role == "admin":

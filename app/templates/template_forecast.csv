@@ -1,3 +1,1 @@
-Data_Envio,Distribuidor_Nome,Cidade_Filial,NFMAT,MATERIAL,Descrição,Ranking_Nacional,Qtd,Data_recebimento,Observacoes
-15/05/2026,Vianmaq S.A.,Marialva,NF-2026-001,600-319-3610,Filtro Hidráulico,1,57,01/05/2026,
-15/05/2026,Vianmaq S.A.,Curitiba,NF-2026-002,20Y-60-31211,Filtro de Ar,3,31,01/05/2026,Reposição preventiva
+Data Envio,Distribuidor,Filial,NFMAT,Material,Descrição,Ranking Nacional,Quantidade,Data Recebimento,Observações

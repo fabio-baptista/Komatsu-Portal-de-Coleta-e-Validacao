@@ -296,7 +296,7 @@ def get_all_uploads(include_mock: bool = True) -> list[UploadRecord]:
     return session_records + mock_records
 
 
-def get_admin_status_rows(period: str | None = None) -> list[dict]:
+def get_admin_status_rows(period: str | None = None, report_type: str | None = None) -> list[dict]:
     """
     Constrói a tabela de status por fornecedor para o painel administrativo.
 
@@ -305,6 +305,7 @@ def get_admin_status_rows(period: str | None = None) -> list[dict]:
     Parâmetros:
         period — período de referência no formato "YYYY-MM".
                  Se None, usa o período da janela aberta.
+        report_type — tipo de relatório para filtrar uploads.
 
     Retorno: list[dict] com chaves:
         name, code, period, status, last, version, errors, upload_id
@@ -322,11 +323,11 @@ def get_admin_status_rows(period: str | None = None) -> list[dict]:
     session = get_snowflake_session()
     if session is not None:
         try:
-            sf_rows = _build_admin_rows_from_snowflake(session, current_period)
+            sf_rows = _build_admin_rows_from_snowflake(session, current_period, report_type)
             if sf_rows is not None:
                 _upload_logger.info(
-                    "get_admin_status_rows: %d linhas do Snowflake para period=%s",
-                    len(sf_rows), current_period,
+                    "get_admin_status_rows: %d linhas do Snowflake para period=%s, report_type=%s",
+                    len(sf_rows), current_period, report_type,
                 )
                 return sf_rows
         except Exception as exc:
@@ -341,50 +342,63 @@ def get_admin_status_rows(period: str | None = None) -> list[dict]:
     return _build_admin_rows_from_session(current_period)
 
 
-def _build_admin_rows_from_snowflake(session, period: str) -> list[dict]:
+def _build_admin_rows_from_snowflake(session, period: str, report_type: str | None = None) -> list[dict]:
     """
     Constrói status rows diretamente do Snowflake.
-    JOIN CONTROL.SUPPLIERS com CONTROL.UPLOAD_BATCHES filtrado por período.
+    JOIN CONTROL.SUPPLIERS com CONTROL.UPLOAD_BATCHES filtrado por período e report_type.
+
+    Status da coleta:
+    - "recebido": fornecedor com envio VALID + IS_ACTIVE no período
+    - "cancelled_pending": fornecedor com envio CANCELLED no período mas sem VALID ativo
+    - "pending": sem envio válido atual (inclui apenas inválidos ou sem envio)
     """
     import pandas as pd
 
     safe_period = period.replace("'", "''") if period else ""
+    rt_filter = ""
+    if report_type:
+        safe_rt = report_type.replace("'", "''")
+        rt_filter = f"AND REPORT_TYPE = '{safe_rt}'"
 
-    # Buscar fornecedores ativos e seu upload mais recente no período
+    # Query: busca upload válido ativo + existência de cancelamento no período
     query = f"""
-        WITH latest_uploads AS (
+        WITH valid_uploads AS (
             SELECT
                 SUPPLIER_ID,
                 UPLOAD_ID,
-                STATUS,
-                IS_ACTIVE,
                 VERSION,
-                INVALID_ROWS,
                 UPLOADED_AT,
-                ROW_NUMBER() OVER (
-                    PARTITION BY SUPPLIER_ID
-                    ORDER BY
-                        CASE WHEN STATUS = 'VALID' AND IS_ACTIVE = TRUE THEN 0
-                             WHEN STATUS = 'INVALID' THEN 1
-                             ELSE 2
-                        END,
-                        UPLOADED_AT DESC
-                ) AS RN
+                ROW_NUMBER() OVER (PARTITION BY SUPPLIER_ID ORDER BY UPLOADED_AT DESC) AS RN
             FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
             WHERE REFERENCE_PERIOD = '{safe_period}'
+              AND STATUS = 'VALID'
+              AND IS_ACTIVE = TRUE
+              {rt_filter}
+        ),
+        cancelled_uploads AS (
+            SELECT
+                SUPPLIER_ID,
+                UPLOAD_ID,
+                UPLOADED_AT,
+                ROW_NUMBER() OVER (PARTITION BY SUPPLIER_ID ORDER BY UPLOADED_AT DESC) AS RN
+            FROM {_DATABASE}.CONTROL.UPLOAD_BATCHES
+            WHERE REFERENCE_PERIOD = '{safe_period}'
+              AND STATUS = 'CANCELLED'
+              {rt_filter}
         )
         SELECT
             s.SUPPLIER_NAME,
             s.SUPPLIER_CODE,
-            lu.UPLOAD_ID,
-            lu.STATUS AS UPLOAD_STATUS,
-            lu.IS_ACTIVE,
-            lu.VERSION,
-            lu.INVALID_ROWS,
-            lu.UPLOADED_AT
+            vu.UPLOAD_ID AS VALID_UPLOAD_ID,
+            vu.VERSION AS VALID_VERSION,
+            vu.UPLOADED_AT AS VALID_UPLOADED_AT,
+            cu.UPLOAD_ID AS CANCELLED_UPLOAD_ID,
+            cu.UPLOADED_AT AS CANCELLED_UPLOADED_AT
         FROM {_DATABASE}.CONTROL.SUPPLIERS s
-        LEFT JOIN latest_uploads lu
-            ON s.SUPPLIER_CODE = lu.SUPPLIER_ID AND lu.RN = 1
+        LEFT JOIN valid_uploads vu
+            ON s.SUPPLIER_CODE = vu.SUPPLIER_ID AND vu.RN = 1
+        LEFT JOIN cancelled_uploads cu
+            ON s.SUPPLIER_CODE = cu.SUPPLIER_ID AND cu.RN = 1
         WHERE s.STATUS = 'active'
         ORDER BY s.SUPPLIER_CODE
     """
@@ -397,12 +411,12 @@ def _build_admin_rows_from_snowflake(session, period: str) -> list[dict]:
     for _, row in df.iterrows():
         name = str(row["SUPPLIER_NAME"])
         code = str(row["SUPPLIER_CODE"])
-        upload_id = row["UPLOAD_ID"]
-        upload_status = str(row["UPLOAD_STATUS"]) if row["UPLOAD_STATUS"] else None
+        valid_id = row.get("VALID_UPLOAD_ID")
+        cancelled_id = row.get("CANCELLED_UPLOAD_ID")
 
-        if upload_status == "VALID" and row["IS_ACTIVE"]:
-            # Fornecedor com forecast válido ativo
-            uploaded_at = row["UPLOADED_AT"]
+        if valid_id and not pd.isna(valid_id):
+            # Fornecedor com envio válido ativo → Recebido
+            uploaded_at = row["VALID_UPLOADED_AT"]
             try:
                 ts = pd.Timestamp(uploaded_at)
                 last = ts.strftime("%d/%m/%Y %H:%M")
@@ -413,27 +427,33 @@ def _build_admin_rows_from_snowflake(session, period: str) -> list[dict]:
                 "name":      name,
                 "code":      code,
                 "period":    period,
-                "status":    "valid",
+                "status":    "recebido",
                 "last":      last,
-                "version":   _safe_int(row["VERSION"], 1),
+                "version":   _safe_int(row["VALID_VERSION"], 1),
                 "errors":    0,
-                "upload_id": str(upload_id) if upload_id else None,
+                "upload_id": str(valid_id),
             })
-        elif upload_status == "INVALID":
-            # Upload inválido no período: fornecedor fica como Pendente.
-            # Erros são responsabilidade do fornecedor — não exibir no admin.
+        elif cancelled_id and not pd.isna(cancelled_id):
+            # Fornecedor com cancelamento mas sem envio válido → Cancelado/Pendente
+            uploaded_at = row["CANCELLED_UPLOADED_AT"]
+            try:
+                ts = pd.Timestamp(uploaded_at)
+                last = ts.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                last = str(uploaded_at)[:16] if uploaded_at else "—"
+
             rows.append({
                 "name":      name,
                 "code":      code,
                 "period":    period,
-                "status":    "pending",
-                "last":      "—",
+                "status":    "cancelled_pending",
+                "last":      last,
                 "version":   "—",
                 "errors":    "—",
-                "upload_id": None,
+                "upload_id": str(cancelled_id),
             })
         else:
-            # Sem upload no período → Pendente
+            # Sem envio válido ou cancelamento relevante → Pendente
             rows.append({
                 "name":      name,
                 "code":      code,

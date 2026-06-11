@@ -1,9 +1,8 @@
 """
 supplier_history.py
 
-Tela de histórico de envios do fornecedor.
-Lista todos os arquivos enviados com status, versão, data e ação de cancelamento
-dentro da janela de tempo permitida.
+Tela de historico de envios do fornecedor.
+Orientada por Tipo de Relatorio com menu de acoes por linha (padrao popover).
 """
 
 import streamlit as st
@@ -11,6 +10,7 @@ import streamlit as st
 from components.badges import status_badge, version_badge
 from components.cards import metric_card, render_cards_row
 from services.upload_service import UploadRecord, can_cancel, get_supplier_uploads, persist_cancel_upload
+from utils.constants import get_enabled_report_types
 from utils.session_state import navigate_to, deactivate_validated_forecast
 from utils.logger import get_logger
 from utils.streamlit_compat import safe_rerun
@@ -19,306 +19,198 @@ _logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Componentes internos da tela
+# Status labels
+# ---------------------------------------------------------------------------
+
+_STATUS_LABELS = {
+    "invalid": "Invalido",
+    "valid": "Valido/Ativo",
+    "replaced": "Substituido",
+    "canceled": "Cancelado",
+}
+_LABEL_TO_STATUS = {v: k for k, v in _STATUS_LABELS.items()}
+
+# Proporcoes das colunas da tabela (7 colunas + acoes)
+_COLS = [3, 1.2, 0.8, 1.2, 1.5, 0.8, 0.8, 0.7]
+
+
+# ---------------------------------------------------------------------------
+# Callbacks de acao (usados por on_click nos popovers)
+# ---------------------------------------------------------------------------
+
+def _cb_ver_erros(upload_id: str) -> None:
+    navigate_to("errors", upload_id=upload_id, origin="history")
+
+
+def _cb_ver_detalhes(upload_id: str) -> None:
+    navigate_to("admin_upload_detail", upload_id=upload_id, origin="history")
+
+
+def _cb_cancelar(upload_id: str, supplier_id: str, user_email: str) -> None:
+    success = persist_cancel_upload(
+        upload_id=upload_id,
+        supplier_id=supplier_id,
+        cancelled_by=user_email,
+    )
+    if success:
+        _logger.info("Upload cancelado: upload_id=%s, by=%s", upload_id, user_email)
+        deactivate_validated_forecast(upload_id)
+        st.session_state.just_cancelled_upload_id = upload_id
+    else:
+        _logger.error("Falha ao cancelar upload: upload_id=%s", upload_id)
+        st.session_state["_hist_cancel_error"] = True
+
+
+# ---------------------------------------------------------------------------
+# Componentes
 # ---------------------------------------------------------------------------
 
 def _render_page_header() -> None:
     st.markdown(
         '<div class="kmt-section">'
-        '<p class="kmt-section-title">Histórico de Envios</p>'
+        '<p class="kmt-section-title">Historico de Envios</p>'
         '<p class="kmt-section-subtitle">'
-        'Acompanhe os arquivos enviados, versões e status de processamento.'
+        'Selecione o tipo de relatorio para consultar seus envios.'
         '</p></div>',
         unsafe_allow_html=True,
     )
 
 
 def _render_summary_cards(records: list[UploadRecord]) -> None:
-    """Exibe os 4 cards de resumo operacional."""
     total = len(records)
-    valid_count    = sum(1 for r in records if r.status == "valid")
-    invalid_count  = sum(1 for r in records if r.status == "invalid")
-
-    # Versão ativa = maior versão dentre os registros com status "valid"
+    valid_count = sum(1 for r in records if r.status == "valid")
+    invalid_count = sum(1 for r in records if r.status == "invalid")
     active_versions = [r.version for r in records if r.status == "valid"]
-    active_version  = f"v.{max(active_versions)}" if active_versions else "—"
+    active_version = f"v.{max(active_versions)}" if active_versions else "\u2014"
 
     render_cards_row([
-        metric_card("Total de Envios",  str(total)),
-        metric_card("Versão Ativa",     active_version),
-        metric_card("Arquivos Válidos", str(valid_count)),
-        metric_card("Com Erro",         str(invalid_count)),
+        metric_card("Total de Envios", str(total)),
+        metric_card("Versao Ativa", active_version),
+        metric_card("Validos", str(valid_count)),
+        metric_card("Com Erro", str(invalid_count)),
     ])
 
 
-def _render_history_table(records: list[UploadRecord]) -> str:
-    """
-    Retorna HTML da tabela de histórico.
-    Colunas: Upload ID, Arquivo, Período, Versão, Status, Data Envio,
-             Linhas Válidas, Linhas c/ Erro.
-    A coluna "Ação" foi removida — ações reais ficam nos botões abaixo da tabela.
-    """
-    rows = ""
-    for r in records:
-        badge   = status_badge(r.status)
-        ver     = version_badge(r.version)
-        valid_c = (
-            f'<span style="color:#15803D;font-weight:700;">{r.valid_rows}</span>'
-            if r.valid_rows > 0 else
-            '<span style="color:#9CA3AF;">0</span>'
-        )
-        invalid_c = (
-            f'<span style="color:#B91C1C;font-weight:700;">{r.invalid_rows}</span>'
-            if r.invalid_rows > 0 else
-            '<span style="color:#9CA3AF;">0</span>'
-        )
-
-        rows += (
-            f'<tr class="kmt-table-row" id="row-{r.upload_id}">'
-            f'<td class="kmt-table-cell kmt-td-id">{r.upload_id}</td>'
-            f'<td class="kmt-table-cell" style="max-width:220px;overflow:hidden;'
-            f'text-overflow:ellipsis;white-space:nowrap;" title="{r.file_name}">'
-            f'{r.file_name}</td>'
-            f'<td class="kmt-table-cell kmt-td-period">{r.period}</td>'
-            f'<td class="kmt-table-cell kmt-td-center">{ver}</td>'
-            f'<td class="kmt-table-cell">{badge}</td>'
-            f'<td class="kmt-table-cell kmt-td-date">{r.sent_at}</td>'
-            f'<td class="kmt-table-cell kmt-td-center">{valid_c}</td>'
-            f'<td class="kmt-table-cell kmt-td-center">{invalid_c}</td>'
-            '</tr>'
-        )
-
-    return (
-        '<div class="kmt-table-container">'
-        '<div class="kmt-table-header">'
-        '<span class="kmt-table-title">Rastreabilidade de Arquivos</span>'
-        '</div>'
-        '<div class="kmt-table-scroll">'
-        '<table class="kmt-table">'
-        '<thead><tr class="kmt-thead-row">'
-        '<th class="kmt-th">Upload ID</th>'
-        '<th class="kmt-th">Arquivo</th>'
-        '<th class="kmt-th">Período</th>'
-        '<th class="kmt-th kmt-th-center">Versão</th>'
-        '<th class="kmt-th">Status</th>'
-        '<th class="kmt-th">Data Envio</th>'
-        '<th class="kmt-th kmt-th-center">Linhas Válidas</th>'
-        '<th class="kmt-th kmt-th-center">Linhas c/ Erro</th>'
-        '</tr></thead>'
-        f'<tbody>{rows}</tbody>'
-        '</table></div></div>'
-    )
-
-
-# ---------------------------------------------------------------------------
-# Mapeamento de labels de status
-# ---------------------------------------------------------------------------
-
-_STATUS_LABELS = {
-    "invalid": "Inválido",
-    "valid": "Válido",
-    "replaced": "Substituído",
-    "canceled": "Cancelado",
-}
-
-
-def _render_actions_with_filters(records: list[UploadRecord]) -> None:
-    """
-    Seção de ações com filtros interconectados.
-
-    Filtros: Status, Upload ID, Arquivo, Período, Versão.
-    Ao filtrar por status, apenas os uploads com aquele status ficam
-    disponíveis nos demais filtros. Ações contextuais:
-      - "Ver erros" → apenas status inválido
-      - "Ver Detalhes" → válido, substituído, cancelado
-      - "Cancelar Envio" → válido ativo dentro da janela aberta
-    """
-    # Banner de sucesso do último cancelamento
-    just_cancelled_id = st.session_state.get("just_cancelled_upload_id")
-    if just_cancelled_id:
-        st.session_state.just_cancelled_upload_id = None
+def _render_table_with_actions(records: list[UploadRecord]) -> None:
+    """Tabela com st.columns por linha e popover de acoes na ultima coluna."""
+    if not records:
         st.markdown(
-            '<div class="kmt-alert kmt-alert--info" style="margin-bottom:12px;">'
-            '<div class="kmt-alert-icon">✅</div>'
-            '<div>'
-            '<p class="kmt-alert-title">Envio cancelado com sucesso.</p>'
-            '<p class="kmt-alert-body">'
-            f'O registro <strong>{just_cancelled_id}</strong> foi mantido '
-            'no histórico com status <strong>Cancelado</strong> '
-            'e deixou de ser a versão ativa.'
-            '</p></div></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="kmt-card" style="padding:16px 20px;">'
-        '<p class="kmt-card-label" style="margin-bottom:10px;">'
-        'Ações</p></div>',
-        unsafe_allow_html=True,
-    )
-
-    # --- Filtro 1: Status ---
-    all_statuses = sorted({r.status for r in records})
-    status_options = [_STATUS_LABELS.get(s, s) for s in all_statuses]
-
-    col_st, col_arq, col_per, col_ver, col_id = st.columns(5)
-
-    with col_st:
-        selected_status_label = st.selectbox(
-            "Status",
-            options=["Todos"] + status_options,
-            key="hist_filter_status",
-        )
-
-    # Resolve label de volta para valor interno
-    _label_to_key = {v: k for k, v in _STATUS_LABELS.items()}
-    selected_status = _label_to_key.get(selected_status_label)  # None se "Todos"
-
-    # Filtra records pelo status selecionado
-    if selected_status:
-        filtered = [r for r in records if r.status == selected_status]
-    else:
-        filtered = list(records)
-
-    # --- Filtro 2: Arquivo ---
-    file_options = sorted({r.file_name for r in filtered})
-    with col_arq:
-        selected_file = st.selectbox(
-            "Arquivo",
-            options=["Todos"] + file_options,
-            key="hist_filter_file",
-        )
-    if selected_file != "Todos":
-        filtered = [r for r in filtered if r.file_name == selected_file]
-
-    # --- Filtro 3: Período ---
-    period_options = sorted({r.period for r in filtered})
-    with col_per:
-        selected_period = st.selectbox(
-            "Período",
-            options=["Todos"] + period_options,
-            key="hist_filter_period",
-        )
-    if selected_period != "Todos":
-        filtered = [r for r in filtered if r.period == selected_period]
-
-    # --- Filtro 4: Versão ---
-    version_options = sorted({str(r.version) for r in filtered})
-    with col_ver:
-        selected_version = st.selectbox(
-            "Versão",
-            options=["Todos"] + version_options,
-            key="hist_filter_version",
-        )
-    if selected_version != "Todos":
-        filtered = [r for r in filtered if str(r.version) == selected_version]
-
-    # --- Filtro 5: Upload ID ---
-    id_options = [r.upload_id for r in filtered]
-    with col_id:
-        selected_id = st.selectbox(
-            "Upload ID",
-            options=["Todos"] + id_options,
-            key="hist_filter_id",
-        )
-    if selected_id != "Todos":
-        filtered = [r for r in filtered if r.upload_id == selected_id]
-
-    # --- Resultado do filtro ---
-    if not filtered:
-        st.markdown(
-            '<div style="padding:12px 0;font-size:13px;color:#6B7280;">'
-            'Nenhum envio encontrado com os filtros selecionados.</div>',
-            unsafe_allow_html=True,
-        )
-        return
-
-    # Se mais de 1 resultado, solicita refinamento
-    if len(filtered) > 1:
-        st.markdown(
-            '<div style="padding:12px 0;font-size:13px;color:#6B7280;">'
-            f'{len(filtered)} envio(s) encontrados. '
-            'Refine os filtros para selecionar um envio específico e ver as ações disponíveis.'
+            '<div style="padding:24px 0;text-align:center;color:#9CA3AF;font-size:13px;">'
+            'Nenhum envio encontrado para o tipo e status selecionados.'
             '</div>',
             unsafe_allow_html=True,
         )
         return
 
-    # Exatamente 1 registro selecionado → mostrar ações
-    record = filtered[0]
+    # Cabecalho
+    hdr = st.columns(_COLS)
+    labels = ["Arquivo", "Periodo", "Versao", "Status", "Data Envio", "Validas", "Erros", "Acoes"]
+    for col, lbl in zip(hdr, labels):
+        with col:
+            st.markdown(
+                f'<p style="font-size:10px;font-weight:700;text-transform:uppercase;'
+                f'letter-spacing:.06em;color:#9CA3AF;margin:0;">{lbl}</p>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown(
-        '<div style="padding:10px 0 6px 0;font-size:13px;color:#374151;">'
-        f'<strong style="color:#002B5C;">{record.upload_id}</strong>'
-        f'&nbsp;·&nbsp;{record.file_name}'
-        f'&nbsp;·&nbsp;{status_badge(record.status)}'
-        f'&nbsp;·&nbsp;<span style="font-size:11px;color:#6B7280;">'
-        f'v{record.version} · {record.period} · {record.sent_at}</span>'
-        '</div>',
+        '<hr style="margin:6px 0 2px;border:none;border-top:2px solid #E5E7EB;">',
         unsafe_allow_html=True,
     )
 
-    # Ações contextuais
-    action_cols = st.columns(3)
+    # Linhas
+    supplier_id = st.session_state.get("supplier_id") or ""
+    user_email = st.session_state.get("user_email", "")
 
-    # Ver erros — apenas para inválidos
-    if record.status == "invalid":
-        with action_cols[0]:
-            if st.button(
-                "Ver erros",
-                key=f"btn_errors_{record.upload_id}",
-                use_container_width=True,
-            ):
-                navigate_to("errors", upload_id=record.upload_id, origin="history")
-                safe_rerun()
+    for r in records:
+        row = st.columns(_COLS)
 
-    # Ver Detalhes — para válido, substituído, cancelado
-    if record.status in ("valid", "replaced", "canceled"):
-        with action_cols[1]:
-            if st.button(
-                "Ver Detalhes",
-                key=f"btn_detail_{record.upload_id}",
-                use_container_width=True,
-            ):
-                navigate_to(
-                    "admin_upload_detail",
-                    upload_id=record.upload_id,
-                    origin="history",
+        with row[0]:
+            st.markdown(
+                f'<p style="font-size:12px;color:#374151;margin:6px 0;'
+                f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"'
+                f' title="{r.file_name}">{r.file_name}</p>',
+                unsafe_allow_html=True,
+            )
+        with row[1]:
+            st.markdown(
+                f'<p style="font-size:12px;color:#374151;margin:6px 0;">{r.period}</p>',
+                unsafe_allow_html=True,
+            )
+        with row[2]:
+            st.markdown(
+                f'<div style="margin:4px 0;">{version_badge(r.version)}</div>',
+                unsafe_allow_html=True,
+            )
+        with row[3]:
+            st.markdown(
+                f'<div style="margin:4px 0;">{status_badge(r.status)}</div>',
+                unsafe_allow_html=True,
+            )
+        with row[4]:
+            st.markdown(
+                f'<p style="font-size:11px;color:#6B7280;margin:6px 0;">{r.sent_at}</p>',
+                unsafe_allow_html=True,
+            )
+        with row[5]:
+            v_color = "#15803D" if r.valid_rows > 0 else "#9CA3AF"
+            st.markdown(
+                f'<p style="font-size:12px;font-weight:700;color:{v_color};margin:6px 0;">'
+                f'{r.valid_rows}</p>',
+                unsafe_allow_html=True,
+            )
+        with row[6]:
+            e_color = "#B91C1C" if r.invalid_rows > 0 else "#9CA3AF"
+            st.markdown(
+                f'<p style="font-size:12px;font-weight:700;color:{e_color};margin:6px 0;">'
+                f'{r.invalid_rows}</p>',
+                unsafe_allow_html=True,
+            )
+
+        # Menu de acoes via popover
+        with row[7]:
+            with st.popover("\u22ee", use_container_width=True):
+                # Mini header
+                st.markdown(
+                    f'<p style="font-size:11px;font-weight:700;color:#002B5C;'
+                    f'margin:0 0 8px;padding-bottom:6px;'
+                    f'border-bottom:1px solid #F3F4F6;">'
+                    f'{r.file_name[:30]}</p>',
+                    unsafe_allow_html=True,
                 )
-                safe_rerun()
 
-    # Cancelar Envio — apenas para válido ativo dentro da janela
-    if can_cancel(record):
-        with action_cols[2]:
-            if st.button(
-                "Cancelar Envio",
-                key=f"btn_cancel_{record.upload_id}",
-                use_container_width=True,
-            ):
-                supplier_id = st.session_state.get("supplier_id") or ""
-                user_email = st.session_state.get("user_email", "—")
-                success = persist_cancel_upload(
-                    upload_id=record.upload_id,
-                    supplier_id=supplier_id,
-                    cancelled_by=user_email,
-                )
-                if success:
-                    _logger.info(
-                        "Upload cancelado com sucesso: upload_id=%s, by=%s",
-                        record.upload_id, user_email,
+                if r.status == "invalid":
+                    st.button(
+                        "Ver Erros",
+                        key=f"pop_err_{r.upload_id}",
+                        use_container_width=True,
+                        on_click=_cb_ver_erros,
+                        args=(r.upload_id,),
                     )
-                    deactivate_validated_forecast(record.upload_id)
-                    st.session_state.just_cancelled_upload_id = record.upload_id
-                else:
-                    _logger.error(
-                        "Falha ao cancelar upload: upload_id=%s", record.upload_id,
+
+                if r.status in ("valid", "replaced", "canceled"):
+                    st.button(
+                        "Ver Detalhes",
+                        key=f"pop_det_{r.upload_id}",
+                        use_container_width=True,
+                        on_click=_cb_ver_detalhes,
+                        args=(r.upload_id,),
                     )
-                    st.error(
-                        "Falha ao cancelar o envio no Snowflake. "
-                        "Verifique se o envio ainda está ativo e tente novamente."
+
+                if can_cancel(r):
+                    st.button(
+                        "Cancelar Envio",
+                        key=f"pop_can_{r.upload_id}",
+                        use_container_width=True,
+                        on_click=_cb_cancelar,
+                        args=(r.upload_id, supplier_id, user_email),
                     )
-                safe_rerun()
+
+        # Separador de linha
+        st.markdown(
+            '<div style="border-top:1px solid #F3F4F6;margin:0;"></div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -326,45 +218,90 @@ def _render_actions_with_filters(records: list[UploadRecord]) -> None:
 # ---------------------------------------------------------------------------
 
 def render() -> None:
-    """
-    Renderiza a tela de histórico de envios do fornecedor.
-    Chamado por streamlit_app.py quando page == 'history'.
-    O supplier_id vem do session_state (não da planilha).
-    Exibe apenas uploads registrados na sessão atual (include_mock=False).
-    """
     try:
         _render_impl()
     except Exception as exc:
         _logger.exception("Erro ao renderizar Meus Envios: %s", exc)
-        st.error("Não foi possível carregar estas informações no momento. Tente novamente em alguns instantes.")
+        st.error("Nao foi possivel carregar estas informacoes no momento. Tente novamente em alguns instantes.")
 
 
 def _render_impl() -> None:
-    """Implementação interna da tela de histórico."""
     supplier_id = st.session_state.get("supplier_id") or ""
 
-    records = get_supplier_uploads(supplier_id, include_mock=False)
-
     _render_page_header()
-    _render_summary_cards(records)
 
-    st.markdown('<div class="kmt-spacer-md"></div>', unsafe_allow_html=True)
+    # --- Banner de cancelamento (flash) ---
+    just_cancelled_id = st.session_state.get("just_cancelled_upload_id")
+    if just_cancelled_id:
+        st.session_state.just_cancelled_upload_id = None
+        st.success(f"Envio {just_cancelled_id} cancelado com sucesso.")
 
-    if not records:
+    if st.session_state.pop("_hist_cancel_error", None):
+        st.error("Falha ao cancelar o envio. Verifique se o envio ainda esta ativo e tente novamente.")
+
+    # --- Selectbox principal: Tipo de Relatorio ---
+    enabled_types = get_enabled_report_types()
+    type_options = ["Selecione..."] + enabled_types
+
+    selected_type = st.selectbox(
+        "Tipo de Relatorio",
+        options=type_options,
+        index=0,
+        key="hist_report_type",
+    )
+
+    if selected_type == "Selecione...":
         st.markdown(
-            '<div class="kmt-alert kmt-alert--info" style="margin-top:8px;">'
-            '<div class="kmt-alert-icon">📭</div>'
+            '<div style="padding:24px 0;font-size:14px;color:#6B7280;text-align:center;">'
+            'Selecione um tipo de relatorio para consultar seu historico de envios.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # --- Carregar records do tipo ---
+    all_records = get_supplier_uploads(supplier_id, include_mock=False)
+    type_records = [r for r in all_records if r.report_type == selected_type]
+
+    if not type_records:
+        st.markdown(
+            '<div class="kmt-alert kmt-alert--info" style="margin-top:12px;">'
+            '<div class="kmt-alert-icon">&#128237;</div>'
             '<div>'
-            '<p class="kmt-alert-title">Nenhum envio encontrado para este fornecedor.</p>'
+            f'<p class="kmt-alert-title">Nenhum envio de {selected_type} encontrado.</p>'
             '<p class="kmt-alert-body">'
-            'Use <strong>Enviar Arquivo</strong> para registrar seu primeiro forecast.'
+            'Use <strong>Enviar Arquivo</strong> para registrar seu primeiro envio.'
             '</p></div></div>',
             unsafe_allow_html=True,
         )
         return
 
-    # Tabela principal
-    st.markdown(_render_history_table(records), unsafe_allow_html=True)
+    # --- Cards ---
+    _render_summary_cards(type_records)
 
-    # Filtros interconectados + ações contextuais
-    _render_actions_with_filters(records)
+    st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
+
+    # --- Filtro de status ---
+    all_statuses = sorted({r.status for r in type_records})
+    status_labels = [_STATUS_LABELS.get(s, s) for s in all_statuses]
+
+    selected_status_label = st.selectbox(
+        "Status do Envio",
+        options=["Todos"] + status_labels,
+        key="hist_status_filter",
+    )
+
+    if selected_status_label != "Todos":
+        selected_status = _LABEL_TO_STATUS.get(selected_status_label)
+        visible = [r for r in type_records if r.status == selected_status] if selected_status else type_records
+    else:
+        visible = type_records
+
+    # --- Tabela com acoes por linha ---
+    st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p style="font-size:11px;color:#9CA3AF;margin:0 0 4px;">'
+        f'{len(visible)} envio(s) de {selected_type}</p>',
+        unsafe_allow_html=True,
+    )
+    _render_table_with_actions(visible)

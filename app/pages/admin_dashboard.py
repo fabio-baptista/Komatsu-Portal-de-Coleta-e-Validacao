@@ -15,6 +15,7 @@ from components.cards import kpi_card, render_cards_row
 from services.mock_data_service import get_current_open_window
 from services.supplier_service import get_all_suppliers
 from services.upload_service import get_admin_status_rows, get_all_uploads, get_canceled_uploads_count, get_available_periods_from_snowflake
+from utils.constants import get_enabled_report_types
 from utils.session_state import navigate_to
 from utils.streamlit_compat import safe_rerun
 
@@ -24,11 +25,9 @@ from utils.streamlit_compat import safe_rerun
 # ---------------------------------------------------------------------------
 
 _STATUS_PT: dict[str, str] = {
-    "valid":    "Válido",
-    "invalid":  "Inválido",
-    "pending":  "Pendente",
-    "canceled": "Cancelado",
-    "replaced": "Substituído",
+    "recebido":           "Recebido",
+    "pending":            "Pendente",
+    "cancelled_pending":  "Cancelado/Pendente",
 }
 _PT_TO_STATUS: dict[str, str] = {v: k for k, v in _STATUS_PT.items()}
 
@@ -165,124 +164,195 @@ def _render_filters(periods: list[str]) -> tuple[str, list[str], list[str]]:
 
 def _render_kpi_cards(rows: list[dict], period_lbl: str, canceled_count: int = 0) -> None:
     """
-    4 cards KPI orientados à coleta de forecast.
+    4 cards KPI orientados a coleta.
 
-    Regra de negócio:
-      Participantes   = fornecedores ativos na coleta do período (CONTROL.SUPPLIERS)
-      Válidos         = com upload VALID e IS_ACTIVE=TRUE no período (CONTROL.UPLOAD_BATCHES)
-      Pendentes       = sem forecast válido ativo (inclui sem envio, com inválido e cancelados
-                        que não reenviaram)
-      Cancelados      = uploads STATUS=CANCELLED no período (CONTROL.UPLOAD_BATCHES)
+    Status da coleta (nao do fornecedor, nao do arquivo):
+      Participantes          = fornecedores ativos com coleta habilitada
+      Recebidos              = com envio valido atual no periodo
+      Pendentes              = sem envio valido atual (inclui cancelled_pending)
+      Cancelamentos no Periodo = eventos de cancelamento no periodo
     """
     participantes = len(rows)
-    validos       = sum(1 for r in rows if r["status"] == "valid")
-    pendentes     = participantes - validos
-    sem_valido    = pendentes
+    recebidos = sum(1 for r in rows if r["status"] == "recebido")
+    pendentes = participantes - recebidos
 
     render_cards_row([
-        kpi_card("Participantes",            str(participantes)),
-        kpi_card("Enviaram Forecast Válido", str(validos)),
-        kpi_card("Pendentes",                str(pendentes)),
-        kpi_card("Envios Cancelados",        str(canceled_count)),
+        kpi_card("Participantes",             str(participantes)),
+        kpi_card("Recebidos",                 str(recebidos)),
+        kpi_card("Pendentes",                 str(pendentes)),
+        kpi_card("Cancelamentos no Periodo",  str(canceled_count)),
     ])
 
-    # Nota de rastreabilidade
-    if sem_valido > 0:
+    if pendentes > 0:
         st.markdown(
             f'<p style="font-size:12px;color:#B45309;font-weight:600;margin:6px 0 0 2px;">'
-            f'⚠&nbsp;&nbsp;{sem_valido} fornecedor(es) sem forecast válido no período.</p>',
+            f'&#9888;&nbsp;&nbsp;{pendentes} fornecedor(es) sem envio valido no periodo.</p>',
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
             f'<p style="font-size:12px;color:#15803D;font-weight:600;margin:6px 0 0 2px;">'
-            f'✓&nbsp;&nbsp;Todos os {participantes} fornecedores '
-            f'entregaram forecast válido no período.</p>',
+            f'&#10003;&nbsp;&nbsp;Todos os {participantes} fornecedores '
+            f'entregaram envio valido no periodo.</p>',
             unsafe_allow_html=True,
         )
 
     if canceled_count > 0:
         st.markdown(
             f'<p style="font-size:11px;color:#6B7280;margin:3px 0 0 2px;">'
-            f'ℹ&nbsp;&nbsp;{canceled_count} envio(s) válido(s) cancelado(s) no período — '
-            f'consulte o histórico individual para detalhes.</p>',
+            f'&#8505;&nbsp;&nbsp;{canceled_count} cancelamento(s) no periodo.</p>',
             unsafe_allow_html=True,
         )
 
-    # Nota explicativa sobre as definições
     st.markdown(
         f'<p style="font-size:11px;color:#9CA3AF;margin:4px 0 12px 2px;">'
-        f'Período de referência: <strong style="color:#6B7280;">{period_lbl}</strong>'
-        f'&nbsp;·&nbsp;'
-        f'<strong>Participantes</strong> = fornecedores ativos com coleta habilitada'
-        f'&nbsp;·&nbsp;'
-        f'<strong>Pendentes</strong> = sem forecast válido ativo (inclui inválidos e cancelados sem reenvio)'
-        f'&nbsp;·&nbsp;'
-        f'<strong>Cancelados</strong> = eventos de cancelamento de envio válido no período.</p>',
+        f'Periodo: <strong style="color:#6B7280;">{period_lbl}</strong>'
+        f'&nbsp;&middot;&nbsp;'
+        f'<strong>Participantes</strong> = fornecedores ativos'
+        f'&nbsp;&middot;&nbsp;'
+        f'<strong>Recebidos</strong> = com envio valido atual'
+        f'&nbsp;&middot;&nbsp;'
+        f'<strong>Pendentes</strong> = sem envio valido atual'
+        f'&nbsp;&middot;&nbsp;'
+        f'<strong>Cancelamentos</strong> = eventos de cancelamento no periodo.</p>',
         unsafe_allow_html=True,
     )
 
 
-def _render_status_table(rows: list[dict], period_lbl: str) -> str:
+# Proporcoes das colunas da tabela admin (6 dados + acoes)
+_ADM_COLS = [2.5, 1.2, 1.2, 1.3, 1.5, 0.8, 0.7]
+
+
+def _cb_adm_ver_detalhe(upload_id: str) -> None:
+    navigate_to("admin_upload_detail", upload_id=upload_id, origin="admin_dashboard")
+
+
+def _cb_adm_ver_erros(upload_id: str) -> None:
+    navigate_to("errors", upload_id=upload_id, origin="admin_dashboard")
+
+
+def _render_status_table(rows: list[dict], period_lbl: str) -> None:
     """
-    HTML da tabela de status por fornecedor.
-    Colunas: Fornecedor, Código, Período, Status da Coleta,
-             Último Envio, Versão Ativa.
-    Ações clicáveis ficam em _render_action_buttons(), abaixo da tabela.
+    Tabela de status por fornecedor com menu de acoes por linha via st.popover.
     """
-    if not rows:
-        return (
-            '<div class="kmt-table-container">'
-            '<div class="kmt-table-header">'
-            f'<span class="kmt-table-title">Status por Fornecedor — {period_lbl}</span>'
-            '</div>'
-            '<div style="padding:40px;text-align:center;color:#9CA3AF;font-size:13px;">'
-            'Nenhum fornecedor encontrado para os filtros selecionados.'
-            '</div></div>'
-        )
-
-    table_rows = ""
-    for r in rows:
-        badge = status_badge(r["status"])
-
-        ver_html = (
-            version_badge(r["version"])
-            if isinstance(r["version"], int)
-            else f'<span style="color:#9CA3AF;font-size:12px;">{r["version"]}</span>'
-        )
-
-        period_display = _period_label(r["period"]) if r["period"] != "—" else "—"
-
-        table_rows += (
-            '<tr class="kmt-table-row">'
-            f'<td class="kmt-table-cell" style="font-weight:700;color:#002B5C;">{r["name"]}</td>'
-            f'<td class="kmt-table-cell" style="font-family:monospace;font-size:12px;color:#6B7280;">{r["code"]}</td>'
-            f'<td class="kmt-table-cell" style="color:#2563EB;font-size:12px;">{period_display}</td>'
-            f'<td class="kmt-table-cell">{badge}</td>'
-            f'<td class="kmt-table-cell kmt-td-date">{r["last"]}</td>'
-            f'<td class="kmt-table-cell kmt-td-center">{ver_html}</td>'
-            '</tr>'
-        )
-
-    return (
-        '<div class="kmt-table-container">'
-        '<div class="kmt-table-header">'
-        f'<span class="kmt-table-title">Status por Fornecedor — {period_lbl}</span>'
-        f'<span style="font-size:11px;color:#9CA3AF;">{len(rows)} fornecedor(es)</span>'
-        '</div>'
-        '<div class="kmt-table-scroll">'
-        '<table class="kmt-table">'
-        '<thead><tr class="kmt-thead-row">'
-        '<th class="kmt-th">Fornecedor</th>'
-        '<th class="kmt-th">Código</th>'
-        '<th class="kmt-th">Período</th>'
-        '<th class="kmt-th">Status da Coleta</th>'
-        '<th class="kmt-th">Último Envio</th>'
-        '<th class="kmt-th kmt-th-center">Versão Ativa</th>'
-        '</tr></thead>'
-        f'<tbody>{table_rows}</tbody>'
-        '</table></div></div>'
+    st.markdown(
+        '<div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">'
+        f'<span class="kmt-card-label">Status por Fornecedor \u2014 {period_lbl}</span>'
+        f'<span style="font-size:11px;color:#9CA3AF;margin-left:12px;">{len(rows)} fornecedor(es)</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
+
+    if not rows:
+        st.markdown(
+            '<div style="padding:30px;text-align:center;color:#9CA3AF;font-size:13px;">'
+            'Nenhum fornecedor encontrado para os filtros selecionados.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # Cabecalho
+    hdr = st.columns(_ADM_COLS)
+    labels = ["Fornecedor", "Codigo", "Periodo", "Status", "Ultimo Envio", "Versao", "Acoes"]
+    for col, lbl in zip(hdr, labels):
+        with col:
+            st.markdown(
+                f'<p style="font-size:10px;font-weight:700;text-transform:uppercase;'
+                f'letter-spacing:.06em;color:#9CA3AF;margin:0;">{lbl}</p>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown(
+        '<hr style="margin:6px 0 2px;border:none;border-top:2px solid #E5E7EB;">',
+        unsafe_allow_html=True,
+    )
+
+    # Linhas
+    for r in rows:
+        row_cols = st.columns(_ADM_COLS)
+
+        with row_cols[0]:
+            st.markdown(
+                f'<p style="font-size:13px;font-weight:700;color:#002B5C;margin:6px 0;">'
+                f'{r["name"]}</p>',
+                unsafe_allow_html=True,
+            )
+        with row_cols[1]:
+            st.markdown(
+                f'<p style="font-family:monospace;font-size:12px;color:#6B7280;margin:6px 0;">'
+                f'{r["code"]}</p>',
+                unsafe_allow_html=True,
+            )
+        with row_cols[2]:
+            period_display = _period_label(r["period"]) if r["period"] != "\u2014" else "\u2014"
+            st.markdown(
+                f'<p style="font-size:12px;color:#2563EB;margin:6px 0;">{period_display}</p>',
+                unsafe_allow_html=True,
+            )
+        with row_cols[3]:
+            st.markdown(
+                f'<div style="margin:4px 0;">{status_badge(r["status"])}</div>',
+                unsafe_allow_html=True,
+            )
+        with row_cols[4]:
+            st.markdown(
+                f'<p style="font-size:11px;color:#6B7280;margin:6px 0;">{r["last"]}</p>',
+                unsafe_allow_html=True,
+            )
+        with row_cols[5]:
+            ver_html = (
+                version_badge(r["version"])
+                if isinstance(r["version"], int)
+                else f'<span style="color:#9CA3AF;font-size:12px;">{r["version"]}</span>'
+            )
+            st.markdown(
+                f'<div style="margin:4px 0;">{ver_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Menu de acoes via popover
+        with row_cols[6]:
+            upload_id = r.get("upload_id")
+            has_actions = upload_id and r["status"] in ("recebido", "cancelled_pending")
+
+            if has_actions:
+                with st.popover("\u22ee", use_container_width=True):
+                    st.markdown(
+                        f'<p style="font-size:11px;font-weight:700;color:#002B5C;'
+                        f'margin:0 0 8px;padding-bottom:6px;'
+                        f'border-bottom:1px solid #F3F4F6;">'
+                        f'{r["name"]}</p>',
+                        unsafe_allow_html=True,
+                    )
+
+                    if r["status"] == "recebido":
+                        st.button(
+                            "Ver Detalhes",
+                            key=f"adm_pop_det_{upload_id}",
+                            use_container_width=True,
+                            on_click=_cb_adm_ver_detalhe,
+                            args=(upload_id,),
+                        )
+                    elif r["status"] == "cancelled_pending":
+                        st.button(
+                            "Ver Cancelamento",
+                            key=f"adm_pop_canc_{upload_id}",
+                            use_container_width=True,
+                            on_click=_cb_adm_ver_detalhe,
+                            args=(upload_id,),
+                        )
+            else:
+                st.markdown(
+                    '<p style="font-size:11px;color:#D1D5DB;margin:6px 0;">\u2014</p>',
+                    unsafe_allow_html=True,
+                )
+
+        # Separador
+        st.markdown(
+            '<div style="border-top:1px solid #F3F4F6;margin:0;"></div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _render_quick_nav() -> None:
@@ -315,75 +385,6 @@ def _render_quick_nav() -> None:
             safe_rerun()
 
 
-def _render_action_buttons(rows: list[dict]) -> None:
-    """
-    Botões de ação inline por fornecedor: Ver detalhe (válidos) / Ver erros (inválidos).
-    Usa upload_ids dinâmicos do get_admin_status_rows().
-    """
-    actionable = [
-        r for r in rows
-        if r.get("upload_id") and r["status"] in ("valid", "invalid", "replaced")
-    ]
-    if not actionable:
-        return
-
-    st.markdown('<div class="kmt-spacer-sm"></div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="kmt-card" style="padding:14px 20px;margin-bottom:4px;">'
-        '<p class="kmt-card-label">Ações por Fornecedor</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    for row in actionable:
-        col_info, col_btn, _ = st.columns([4, 2, 2])
-
-        with col_info:
-            err_html = (
-                f' &nbsp;·&nbsp; <span style="color:#B91C1C;font-weight:600;">'
-                f'{row["errors"]} erro(s)</span>'
-            ) if isinstance(row.get("errors"), int) and row["errors"] > 0 else ""
-
-            st.markdown(
-                f"""
-                <div style="padding:8px 0;font-size:13px;color:#374151;">
-                    <strong style="color:#002B5C;">{row['name']}</strong>
-                    &nbsp;·&nbsp;
-                    <span style="font-family:monospace;font-size:12px;color:#6B7280;">
-                        {row['upload_id']}
-                    </span>
-                    {err_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with col_btn:
-            if row["status"] == "invalid":
-                if st.button(
-                    "Ver erros",
-                    key=f"adm_err_{row['upload_id']}",
-                    use_container_width=True,
-                ):
-                    navigate_to(
-                        "errors",
-                        upload_id=row["upload_id"],
-                        origin="admin_dashboard",
-                    )
-                    safe_rerun()
-            else:
-                if st.button(
-                    "Ver detalhe",
-                    key=f"adm_det_{row['upload_id']}",
-                    use_container_width=True,
-                ):
-                    navigate_to(
-                        "admin_upload_detail",
-                        upload_id=row["upload_id"],
-                        origin="admin_dashboard",
-                    )
-                    safe_rerun()
-
 
 # ---------------------------------------------------------------------------
 # Ponto de entrada
@@ -413,12 +414,21 @@ def _render_impl() -> None:
     """Implementação interna do painel admin."""
     _render_page_header()
 
+    # Seletor de tipo de relatório
+    enabled_types = get_enabled_report_types()
+    selected_report_type = st.selectbox(
+        "Tipo de Relatório",
+        options=enabled_types,
+        index=0,
+        key="adm_report_type",
+    )
+
     periods = _get_available_periods()
     selected_period, selected_suppliers, selected_statuses = _render_filters(periods)
 
     period_lbl = _period_label(selected_period) if selected_period else "Período atual"
 
-    rows = get_admin_status_rows(period=selected_period)
+    rows = get_admin_status_rows(period=selected_period, report_type=selected_report_type)
     rows = _apply_filters(rows, selected_suppliers, selected_statuses)
 
     # Conta uploads válidos cancelados no período (para o card "Envios Cancelados")
@@ -430,6 +440,4 @@ def _render_impl() -> None:
     _render_quick_nav()
 
     st.markdown('<div class="kmt-spacer-md"></div>', unsafe_allow_html=True)
-    st.markdown(_render_status_table(rows, period_lbl), unsafe_allow_html=True)
-
-    _render_action_buttons(rows)
+    _render_status_table(rows, period_lbl)

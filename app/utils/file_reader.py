@@ -7,6 +7,7 @@ usando pandas e retornar um DataFrame padronizado para processamento.
 """
 
 import io
+import unicodedata
 import pandas as pd
 from utils.constants import COLUMN_ALIASES
 
@@ -58,33 +59,38 @@ def read_excel_file(
     return df, sheet_names, None
 
 
+def _normalize_header(s: str) -> str:
+    """
+    Normaliza nome de coluna para comparacao accent-insensitive e case-insensitive.
+    strip, lowercase, remove acentos, underscores viram espacos, multiplos espacos viram um.
+    """
+    s = s.strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = s.replace("_", " ")
+    s = " ".join(s.split())
+    return s
+
+
 def normalize_columns(df: pd.DataFrame) -> dict[str, str]:
     """
     Mapeia nomes canônicos das colunas obrigatórias para os nomes reais
     encontrados no DataFrame.
 
+    Usa normalização accent-insensitive e case-insensitive.
+
     Retorna um dicionário {canonical: nome_real} apenas para as colunas
     que foram de fato localizadas. Colunas ausentes não aparecem no resultado.
-
-    Exemplo:
-        {"material": "Material", "quantidade": "Qtd", ...}
     """
-    actual_cols = {col.strip(): col for col in df.columns}
+    # Mapa: header normalizado -> nome original no DataFrame
+    df_cols_norm = {_normalize_header(col): col for col in df.columns}
     found: dict[str, str] = {}
 
     for canonical, aliases in COLUMN_ALIASES.items():
         for alias in aliases:
-            # Comparação case-sensitive com strip
-            if alias.strip() in actual_cols:
-                found[canonical] = actual_cols[alias.strip()]
-                break
-            # Fallback case-insensitive
-            alias_lower = alias.strip().lower()
-            for stripped, original in actual_cols.items():
-                if stripped.lower() == alias_lower:
-                    found[canonical] = original
-                    break
-            if canonical in found:
+            norm_alias = _normalize_header(alias)
+            if norm_alias in df_cols_norm:
+                found[canonical] = df_cols_norm[norm_alias]
                 break
 
     return found
